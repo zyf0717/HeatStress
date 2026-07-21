@@ -26,7 +26,8 @@ wbgt.Liljegren(
   globe_diameter = 0.0508,
   min_wind_speed = 0.13,
   gmt_offset = NULL,
-  averaging_period = 0
+  averaging_period = 0,
+  workers = 1L
 )
 }
 \arguments{
@@ -64,6 +65,13 @@ reference implementation. \code{"batch"} uses the experimental vectorized
 safeguarded root solver with automatic scalar fallback for unresolved rows.}
 
 \item{diagnostics}{logical; return solver metadata in addition to the usual result.}
+
+\item{workers}{number of PSOCK worker processes for \code{engine = "batch"}.
+Must be an integer from 1 through the detected logical CPU count. The default
+of 1 preserves sequential batch execution; values greater than 1 use up to
+the requested number of workers, capped at the number of input rows. Each worker
+preprocesses its own contiguous input chunk, including solar geometry and
+humidity, then solves and assembles its local WBGT results.}
 
 \item{root_tolerance}{numerical precision (K) used to locate heat-balance roots.}
 
@@ -123,6 +131,8 @@ both validated component roots.
 With \code{diagnostics = TRUE}, all row-level diagnostic vectors match the
 input length. \code{input_status} describes filtering, while per-solver
 \code{converged} and \code{fallback_reason} describe numerical solving.
+\code{workers} reports the effective worker count and
+\code{requested_workers} reports the supplied count.
 }
 \examples{
 \dontrun{ 

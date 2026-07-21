@@ -40,9 +40,15 @@ Rscript benchmarks/benchmark-vectorization.R
 Defaults:
 
 - `calZenith()`: 100, 1,000, 10,000, and 87,600 rows;
-- `wbgt.Liljegren()`: 100, 1,000, and 10,000 rows;
+- `wbgt.Liljegren()`: 100, 1,000, 10,000, and 87,600 rows;
 - scalar solvers and `wbgt.Bernard()`: 1, 10, and 100 rows;
 - three repetitions per size.
+
+The current recorded default run is documented in
+[`results/environment.md`](results/environment.md), with machine-readable
+measurements in `results/vectorization-baseline.csv` and
+`results/solver-baseline.csv`. Timings are platform-specific and should not be
+used as capacity estimates for another machine.
 
 Liljegren benchmarks can take substantial time because they deliberately retain the numerical solvers. Use environment variables to reduce a smoke run or adjust repetitions:
 
@@ -67,6 +73,59 @@ calls in the same measured region. It records runtime, all three output
 differences, fallback count, final residual, and `NA` alignment.
 Its default sizes are 100, 1,000, 10,000, and 87,600 rows; the last represents
 one year of hourly observations. Override them with `E2E_SIZES` when needed.
+
+`benchmark-liljegren-parallel.R` compares explicit batch worker counts and
+records startup-inclusive wall time, speedup, throughput, output/diagnostic
+equivalence, `NA` alignment, fallback count, and final residual. Its default
+sizes are 87,600, 250,000, 1,000,000, and 5,000,000 rows. It requires an
+installed HeatStressR package because PSOCK workers load the installed
+namespace; use a smaller smoke run as follows:
+
+```bash
+R CMD INSTALL .
+LILJEGREN_PARALLEL_SIZES=1000 LILJEGREN_WORKERS=1,2 BENCH_REPS=1 \
+  Rscript benchmarks/benchmark-liljegren-parallel.R
+```
+
+The worker list is filtered to the current system's logical CPU limit. This
+benchmark does not imply automatic worker selection by `wbgt.Liljegren()`.
+
+`benchmark-liljegren-workers-1-to-6x87600.R` measures scaling from one through
+six workers with a fixed 87,600 rows per worker. Each row compares a repeated
+input parallel run with the corresponding extrapolation of the same one-worker
+87,600-row block:
+
+```bash
+R CMD INSTALL .
+Rscript benchmarks/benchmark-liljegren-workers-1-to-6x87600.R
+```
+
+Set `ROWS_PER_WORKER` to benchmark a larger equal-sized chunk per worker. For
+the recorded 10x sweep:
+
+```bash
+ROWS_PER_WORKER=876000 \
+  BENCHMARK_OUTPUT=benchmarks/results/liljegren-workers-1-to-6x876000.csv \
+  Rscript benchmarks/benchmark-liljegren-workers-1-to-6x87600.R
+```
+
+The 2026-07-21 Apple M2 Max sweep (macOS arm64, R 4.6.1) peaked at five
+workers. Times are one measurement per configuration; rerun with repeated
+measurements before treating small differences as durable:
+
+| Workers | Total rows | Seconds | Estimated speedup |
+| ---: | ---: | ---: | ---: |
+| 1 | 87,600 | 1.100 | 1.00x |
+| 2 | 175,200 | 1.597 | 1.38x |
+| 3 | 262,800 | 1.779 | 1.85x |
+| 4 | 350,400 | 2.083 | 2.11x |
+| 5 | 438,000 | 2.289 | 2.40x |
+| 6 | 525,600 | 2.752 | 2.40x |
+
+All runs had zero fallback solves and maximum final residual `6.20e-06`.
+The full data is in
+[`results/liljegren-workers-1-to-6x87600.csv`](results/liljegren-workers-1-to-6x87600.csv).
+
 
 `benchmark-liljegren-three-way.R` measures one arm of the baseline/current
 comparison. Set `BENCHMARK_ROOT` to the checkout under test and
