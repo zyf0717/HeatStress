@@ -92,9 +92,8 @@ result_fast <- wbgt.Liljegren(
 ### Optional multicore batch execution
 
 The batch engine remains single-process by default. Set `workers` explicitly
-to use that many local PSOCK R processes; no row-count threshold or automatic
-core selection changes this choice, so small inputs may also use multiple
-workers.
+to use up to that many local PSOCK R processes. The effective count is capped
+at the number of input rows, so small inputs do not launch empty workers.
 
 ```r
 result_parallel <- wbgt.Liljegren(

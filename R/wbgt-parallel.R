@@ -86,7 +86,7 @@ combine_batch_solver_results <- function(results) {
 }
 
 solve_liljegren_batch <- function(tas, dewp, relh, Pair, wind, radiation, zenith,
-                                  workers, min_wind_speed, tolerance, root_tolerance,
+                                  min_wind_speed, tolerance, root_tolerance,
                                   residual_tolerance, surface_albedo, globe_diameter,
                                   prop_direct = 0.8) {
   n <- length(tas)
@@ -103,28 +103,7 @@ solve_liljegren_batch <- function(tas, dewp, relh, Pair, wind, radiation, zenith
   payload <- list(tas = tas, dewp = dewp, relh = relh, Pair = Pair, wind = wind,
     radiation = radiation, zenith = zenith)
 
-  if (workers == 1L || !n) {
-    result <- solve_liljegren_batch_chunk(payload, controls)
-    return(c(result, list(workers = workers)))
-  }
-
-  indices <- split_liljegren_chunks(n, workers)
-  chunks <- lapply(indices, function(index) lapply(payload, `[`, index))
-  cluster <- parallel::makePSOCKcluster(workers)
-  on.exit(parallel::stopCluster(cluster), add = TRUE)
-  parallel::clusterCall(cluster, function() {
-    loadNamespace("HeatStressR")
-    NULL
-  })
-  worker <- function(chunk, controls) {
-    utils::getFromNamespace("solve_liljegren_batch_chunk", "HeatStressR")(chunk, controls)
-  }
-  chunk_results <- parallel::parLapply(cluster, chunks, worker, controls = controls)
-  list(
-    Tg = combine_batch_solver_results(lapply(chunk_results, `[[`, "Tg")),
-    Tnwb = combine_batch_solver_results(lapply(chunk_results, `[[`, "Tnwb")),
-    workers = workers
-  )
+  solve_liljegren_batch_chunk(payload, controls)
 }
 
 solve_liljegren_batch_raw_chunk <- function(chunk, controls) {
@@ -203,13 +182,16 @@ combine_parallel_chunk_field <- function(chunk_results, field) {
 solve_liljegren_parallel <- function(tas, dewp, wind, radiation, dates, pressure,
                                      workers, controls) {
   n <- length(tas)
-  indices <- split_liljegren_chunks(n, workers)
+  effective_workers <- min(workers, n)
+  if (effective_workers < 1L)
+    stop("parallel solver requires at least one input row")
+  indices <- split_liljegren_chunks(n, effective_workers)
   chunks <- lapply(indices, function(index) list(
     tas = tas[index], dewp = dewp[index], wind = wind[index],
     radiation = radiation[index], dates = dates[index],
     pressure = if (length(pressure) == 1L) pressure else pressure[index]
   ))
-  cluster <- parallel::makePSOCKcluster(workers)
+  cluster <- parallel::makePSOCKcluster(effective_workers)
   on.exit(parallel::stopCluster(cluster), add = TRUE)
   parallel::clusterCall(cluster, function() {
     loadNamespace("HeatStressR")
@@ -237,6 +219,6 @@ solve_liljegren_parallel <- function(tas, dewp, wind, radiation, dates, pressure
     valid_idx = valid_idx,
     Tg.batch = if (length(tg_chunks)) combine_batch_solver_results(tg_chunks) else numeric(),
     Tnwb.batch = if (length(tnwb_chunks)) combine_batch_solver_results(tnwb_chunks) else numeric(),
-    workers = workers
+    workers = effective_workers
   )
 }

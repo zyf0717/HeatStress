@@ -40,7 +40,10 @@ test_that("parallel batch execution preserves results and diagnostics", {
   parallel <- run_parallel_fixture(2L)
   expect_identical(sequential$diagnostics$workers, 1L)
   expect_identical(parallel$diagnostics$workers, 2L)
+  expect_identical(sequential$diagnostics$requested_workers, 1L)
+  expect_identical(parallel$diagnostics$requested_workers, 2L)
   parallel$diagnostics$workers <- 1L
+  parallel$diagnostics$requested_workers <- 1L
   expect_identical(parallel, sequential)
 })
 
@@ -61,10 +64,11 @@ test_that("parallel chunks reproduce row-local preprocessing", {
   expect_identical(parallel$diagnostics$input_status[2], "invalid_dewpoint")
   expect_identical(parallel$diagnostics$input_status[5], "missing_date")
   parallel$diagnostics$workers <- 1L
+  parallel$diagnostics$requested_workers <- 1L
   expect_identical(parallel, sequential)
 })
 
-test_that("the requested worker count is retained for a single valid row", {
+test_that("single-row batch execution caps workers at the input size", {
   skip_if(HeatStressR:::max_liljegren_workers() < 2L,
     "requires at least two logical CPUs")
   x <- parallel_fixture()
@@ -73,5 +77,6 @@ test_that("the requested worker count is retained for a single valid row", {
     lon = -5.66, lat = 40.96, hour = TRUE, engine = "batch",
     workers = 2L, diagnostics = TRUE
   ))
-  expect_identical(one$diagnostics$workers, 2L)
+  expect_identical(one$diagnostics$workers, 1L)
+  expect_identical(one$diagnostics$requested_workers, 2L)
 })

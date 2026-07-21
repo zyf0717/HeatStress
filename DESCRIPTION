@@ -8,6 +8,9 @@ Authors@R: c(
            comment = "Maintainer of this fork"),
     person("Ana", "Casanueva", role = "aut", comment = "Original package author")
     )
+Author: Yifei Zheng [aut, cre],
+    Ana Casanueva [aut]
+Maintainer: Yifei Zheng <zyf0717@gmail.com>
 Description: Calculate heat stress indices from meteorological observations.
     HeatStressR is an independently maintained fork that improves numerical robustness,
     diagnostics, solar geometry, and performance of the Liljegren wet-bulb
