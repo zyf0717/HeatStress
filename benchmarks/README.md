@@ -100,6 +100,15 @@ R CMD INSTALL .
 Rscript benchmarks/benchmark-liljegren-workers-1-to-6x87600.R
 ```
 
+Set `ROWS_PER_WORKER` to benchmark a larger equal-sized chunk per worker. For
+the recorded 10x sweep:
+
+```bash
+ROWS_PER_WORKER=876000 \
+  BENCHMARK_OUTPUT=benchmarks/results/liljegren-workers-1-to-6x876000.csv \
+  Rscript benchmarks/benchmark-liljegren-workers-1-to-6x87600.R
+```
+
 The 2026-07-21 Apple M2 Max sweep (macOS arm64, R 4.6.1) peaked at five
 workers. Times are one measurement per configuration; rerun with repeated
 measurements before treating small differences as durable:

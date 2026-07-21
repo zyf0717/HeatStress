@@ -1,6 +1,8 @@
 #!/usr/bin/env Rscript
 
-base_rows <- 87600L
+base_rows <- as.integer(Sys.getenv("ROWS_PER_WORKER", unset = "87600"))
+if (is.na(base_rows) || base_rows < 1L)
+  stop("ROWS_PER_WORKER must be a positive integer")
 worker_counts <- 1:6
 
 make_weather_block <- function(n, lon = -5.66, lat = 40.96) {
