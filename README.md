@@ -67,6 +67,11 @@ had aligned `NA` positions. No batch root required scalar fallback; counts and
 residuals are recorded in the
 [end-to-end benchmark](benchmarks/results/liljegren-e2e.md).
 
+A separate default vectorization run on an Apple M2 Max with R 4.6.1 recorded
+22.13x batch speedup for `wbgt.Liljegren()` at 10,000 rows and 27.79x for
+`calZenith()` at 87,600 rows. Its command, full measurements, and environment
+are recorded in the [benchmark environment](benchmarks/results/environment.md).
+
 ```r
 # Default corrected scalar solver
 result <- wbgt.Liljegren(tas, dewp, wind, radiation, dates, lon = lon, lat = lat)

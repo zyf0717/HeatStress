@@ -44,6 +44,12 @@ Defaults:
 - scalar solvers and `wbgt.Bernard()`: 1, 10, and 100 rows;
 - three repetitions per size.
 
+The current recorded default run is documented in
+[`results/environment.md`](results/environment.md), with machine-readable
+measurements in `results/vectorization-baseline.csv` and
+`results/solver-baseline.csv`. Timings are platform-specific and should not be
+used as capacity estimates for another machine.
+
 Liljegren benchmarks can take substantial time because they deliberately retain the numerical solvers. Use environment variables to reduce a smoke run or adjust repetitions:
 
 ```bash
