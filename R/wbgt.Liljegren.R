@@ -13,6 +13,12 @@
 #' reference implementation. \code{"batch"} uses the experimental vectorized
 #' safeguarded root solver with automatic scalar fallback for unresolved rows.
 #' @param diagnostics logical; return solver metadata in addition to the usual result.
+#' @param workers number of PSOCK worker processes for \code{engine = "batch"}.
+#' Must be an integer from 1 through the detected logical CPU count. The default
+#' of 1 preserves sequential batch execution; values greater than 1 use up to
+#' the requested number of workers, capped at the number of input rows. Each worker
+#' preprocesses its own contiguous input chunk, including solar geometry and
+#' humidity, then solves and assembles its local WBGT results.
 #' @param root_tolerance numerical precision (K) used to locate heat-balance roots.
 #' @param residual_tolerance maximum accepted absolute heat-balance residual (K).
 #' Must be greater than zero and no greater than 0.01.
@@ -58,6 +64,8 @@
 #' With \code{diagnostics = TRUE}, all row-level diagnostic vectors match the
 #' input length. \code{input_status} describes filtering, while per-solver
 #' \code{converged} and \code{fallback_reason} describe numerical solving.
+#' \code{workers} reports the effective worker count and
+#' \code{requested_workers} reports the supplied count.
 #' @export
 #' 
 #' @examples \dontrun{ 
@@ -75,7 +83,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
                            dewpoint_tolerance = NULL, pressure = 1010,
                            surface_albedo = 0.45, globe_diameter = 0.0508,
                            min_wind_speed = 0.13, gmt_offset = NULL,
-                           averaging_period = 0){
+                           averaging_period = 0, workers = 1L){
 
   
   ##################################################
@@ -102,6 +110,9 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   validate_tolerance(residual_tolerance, "residual_tolerance", maximum = 0.01)
   validate_tolerance(dewpoint_tolerance, "dewpoint_tolerance")
   engine <- match.arg(engine)
+  workers <- validate_workers(workers)
+  if (engine != "batch" && workers > 1L)
+    stop("'workers' greater than 1 requires engine = 'batch'")
   assertthat::assert_that(length(tas)==length(dewp) & length(dewp)==length(wind)
                           & length(wind)==length(radiation), 
                           msg="Input vectors do not have the same length")
@@ -109,6 +120,8 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   assertthat::assert_that(length(dates) == length(tas),
                           msg="'dates' must have the same length as the meteorological inputs")
   ndates <- length(tas)
+  requested_workers <- workers
+  effective_workers <- min(workers, ndates)
   assertthat::assert_that(is.numeric(pressure) && length(pressure) %in% c(1L, ndates),
     msg="'pressure' must be a numeric scalar or match the meteorological input length")
   assertthat::assert_that(all((is.na(pressure) & !is.nan(pressure)) |
@@ -133,6 +146,40 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   
   ######################
   ######################
+  if (engine == "batch" && effective_workers > 1L) {
+    parallel_result <- solve_liljegren_parallel(
+      tas = tas, dewp = dewp, wind = wind, radiation = radiation, dates = dates,
+      pressure = pressure, workers = effective_workers,
+      controls = list(
+        lon = lon, lat = lat, hour = hour, gmt_offset = gmt_offset,
+        averaging_period = averaging_period, noNAs = noNAs, swap = swap,
+        dewpoint_tolerance = dewpoint_tolerance, min_wind_speed = min_wind_speed,
+        tolerance = tolerance, root_tolerance = root_tolerance,
+        residual_tolerance = residual_tolerance, surface_albedo = surface_albedo,
+        globe_diameter = globe_diameter, prop_direct = propDirect
+      )
+    )
+    wbgt.value <- parallel_result$data
+    Tg <- parallel_result$Tg
+    Tnwb <- parallel_result$Tnwb
+    input_valid <- parallel_result$input_valid
+    input_status <- parallel_result$input_status
+    solar_geometry_mismatch <- parallel_result$solar_geometry_mismatch
+    valid_idx <- parallel_result$valid_idx
+    Tg.batch <- parallel_result$Tg.batch
+    Tnwb.batch <- parallel_result$Tnwb.batch
+    effective_workers <- parallel_result$workers
+    Tg.converged <- rep(NA, ndates)
+    Tnwb.converged <- rep(NA, ndates)
+    Tg.failure.reason <- rep("not_attempted", ndates)
+    Tnwb.failure.reason <- rep("not_attempted", ndates)
+    if (length(valid_idx)) {
+      Tg.converged[valid_idx] <- attr(Tg.batch, "converged")
+      Tnwb.converged[valid_idx] <- attr(Tnwb.batch, "converged")
+      Tg.failure.reason[valid_idx] <- attr(Tg.batch, "failure_reason")
+      Tnwb.failure.reason[valid_idx] <- attr(Tnwb.batch, "failure_reason")
+    }
+  } else {
   Pair <- rep(pressure, length.out = ndates)
   MinWindSpeed <- min_wind_speed
   Tnwb <- rep(NA_real_, ndates)
@@ -189,15 +236,17 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   Tnwb.failure.reason <- rep("not_attempted", ndates)
   if (length(valid_idx)) {
     if (engine == "batch") {
-      Tg.batch <- fTg_batch(tas[valid_idx], relh[valid_idx], Pair[valid_idx],
-        wind[valid_idx], MinWindSpeed, radiation[valid_idx], propDirect,
-        zenith_rad[valid_idx], tolerance = tolerance, root_tolerance = root_tolerance,
-        residual_tolerance = residual_tolerance, SurfAlbedo = surface_albedo,
-        globe_diameter = globe_diameter)
-      Tnwb.batch <- fTnwb_batch(tas[valid_idx], dewp[valid_idx], relh[valid_idx],
-        Pair[valid_idx], wind[valid_idx], MinWindSpeed, radiation[valid_idx], propDirect,
-        zenith_rad[valid_idx], tolerance = tolerance, root_tolerance = root_tolerance,
-        residual_tolerance = residual_tolerance, SurfAlbedo = surface_albedo)
+      batch_result <- solve_liljegren_batch(
+        tas = tas[valid_idx], dewp = dewp[valid_idx], relh = relh[valid_idx],
+        Pair = Pair[valid_idx], wind = wind[valid_idx], radiation = radiation[valid_idx],
+        zenith = zenith_rad[valid_idx],
+        min_wind_speed = MinWindSpeed, tolerance = tolerance,
+        root_tolerance = root_tolerance, residual_tolerance = residual_tolerance,
+        surface_albedo = surface_albedo, globe_diameter = globe_diameter,
+        prop_direct = propDirect
+      )
+      Tg.batch <- batch_result$Tg
+      Tnwb.batch <- batch_result$Tnwb
       Tg[valid_idx] <- Tg.batch
       Tnwb[valid_idx] <- Tnwb.batch
       Tg.converged[valid_idx] <- attr(Tg.batch, "converged")
@@ -230,6 +279,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
       Tnwb.final.residual[valid_idx] <- vapply(Tnwb.solution, `[[`, numeric(1), "residual")
     }
   }
+  }
   Tg.failed <- input_valid & !Tg.converged
   Tnwb.failed <- input_valid & !Tnwb.converged
   if (any(Tg.failed | Tnwb.failed)) {
@@ -248,8 +298,10 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   # *******************************
   # *** Calculation of the WBGT ***
   # *******************************
-  wbgt.value <- ifelse(is.na(Tg) | is.na(Tnwb), NA_real_,
-    0.7 * Tnwb + 0.2 * Tg + 0.1 * tas)
+  if (!(engine == "batch" && effective_workers > 1L)) {
+    wbgt.value <- ifelse(is.na(Tg) | is.na(Tnwb), NA_real_,
+      0.7 * Tnwb + 0.2 * Tg + 0.1 * tas)
+  }
   wbgt <- list(data = wbgt.value,
                Tnwb = Tnwb,
                Tg = Tg)
@@ -257,7 +309,8 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
 
   if (diagnostics) {
     wbgt$diagnostics <- if (engine == "batch") {
-      list(engine = "batch", attempted = input_valid, input_status = input_status,
+      list(engine = "batch", workers = effective_workers, requested_workers = requested_workers,
+        attempted = input_valid, input_status = input_status,
         Tg = if (length(valid_idx)) {
           expand_solver_diagnostics(Tg.batch, valid_idx, ndates)
         } else {
@@ -268,7 +321,8 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
           expand_solver_diagnostics(numeric(), integer(), ndates)
         })
     } else {
-      list(engine = "scalar", attempted = input_valid, input_status = input_status,
+      list(engine = "scalar", workers = effective_workers, requested_workers = requested_workers,
+        attempted = input_valid, input_status = input_status,
         Tg = scalar_solver_diagnostics(if (length(valid_idx)) Tg.solution else list(), valid_idx, ndates),
         Tnwb = scalar_solver_diagnostics(if (length(valid_idx)) Tnwb.solution else list(), valid_idx, ndates))
     }

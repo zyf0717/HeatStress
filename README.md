@@ -50,10 +50,11 @@ precomputes aligned zenith angles. Its default is the corrected scalar
 heat-balance solver; the vectorized batch solver is an explicit opt-in.
 
 Recorded end-to-end benchmarks on deterministic, solar-consistent inputs show
-the following batch-engine speedups over the corrected scalar engine. Results
-were captured with R 4.3.3 on Linux x86_64 (AMD Ryzen 7 7735HS); rerun the
-benchmark on the target platform before using these figures for capacity
+the following batch-engine speedups over the corrected scalar engine. Rerun
+the benchmark on the target platform before using these figures for capacity
 planning.
+
+AMD Ryzen 7 7735HS, R 4.3.3, Linux x86_64:
 
 | Rows | Scalar | Batch | Speedup |
 | ---: | ---: | ---: | ---: |
@@ -62,10 +63,21 @@ planning.
 | 10,000 | 4.026 s | 0.105 s | 38.34x |
 | 87,600 | 36.451 s | 0.909 s | 40.10x |
 
-All recorded component outputs differed by less than `1.3e-6` degrees C and
-had aligned `NA` positions. No batch root required scalar fallback; counts and
-residuals are recorded in the
+Apple M2 Max, R 4.6.1, macOS arm64:
+
+| Rows | Scalar | Batch | Speedup |
+| ---: | ---: | ---: | ---: |
+| 100 | 0.090 s | 0.057 s | 1.58x |
+| 1,000 | 0.258 s | 0.014 s | 18.43x |
+| 10,000 | 2.680 s | 0.107 s | 25.05x |
+| 87,600 | 23.708 s | 0.932 s | 25.44x |
+
+Across both recorded environments, component outputs differed by less than
+`1.3e-6` degrees C and had aligned `NA` positions. No batch root required
+scalar fallback; counts and residuals are recorded in the
 [end-to-end benchmark](benchmarks/results/liljegren-e2e.md).
+
+### Selecting the Liljegren solver
 
 ```r
 # Default corrected scalar solver
@@ -77,17 +89,42 @@ result_fast <- wbgt.Liljegren(
 )
 ```
 
-`pressure` accepts one value or a vector aligned with the meteorological rows;
-the default is 1010 hPa. The C-aligned defaults are `surface_albedo = 0.45`,
-`globe_diameter = 0.0508`, and `min_wind_speed = 0.13`.
+### Optional multicore batch execution
 
-Solar geometry uses latitude, longitude, and timestamp. `POSIXct`/`POSIXlt`
-timestamps and ISO 8601 strings with an offset (for example,
-`2024-06-01T20:00:00+08:00` or `2024-06-01T12:00:00Z`) identify instants and
-are normalized to UTC when `hour = TRUE`. To reproduce the original C timing
-convention for naive local-standard-time input, supply `gmt_offset` (`LST - GMT`) and
-`averaging_period` in minutes; the solar position is evaluated at the interval
-midpoint. Do not combine `gmt_offset` with an offset-bearing ISO 8601 string.
+The batch engine remains single-process by default. Set `workers` explicitly
+to use up to that many local PSOCK R processes. The effective count is capped
+at the number of input rows, so small inputs do not launch empty workers.
+
+```r
+result_parallel <- wbgt.Liljegren(
+  tas, dewp, wind, radiation, dates, lon = lon, lat = lat,
+  engine = "batch", workers = 4
+)
+```
+
+`workers` must be an integer between 1 and the detected logical CPU count.
+Each batch call creates and stops its own worker cluster. Worker startup and
+data transfer can make small workloads slower; retain `workers = 1` when a
+single process is preferable.
+For `workers > 1`, each worker preprocesses its contiguous raw-input chunk
+(solar geometry, pressure, forcing normalization, dewpoint policy, and
+humidity) before solving and assembling its local WBGT values.
+
+The following one-run sweep used 87,600 rows per worker on an Apple M2 Max
+(macOS arm64, R 4.6.1). Differences near the plateau need repeated runs before
+being treated as durable:
+
+| Workers | Total rows | Seconds | Estimated speedup |
+| ---: | ---: | ---: | ---: |
+| 1 | 87,600 | 1.100 | 1.00x |
+| 2 | 175,200 | 1.597 | 1.38x |
+| 3 | 262,800 | 1.779 | 1.85x |
+| 4 | 350,400 | 2.083 | 2.11x |
+| 5 | 438,000 | 2.289 | 2.40x |
+| 6 | 525,600 | 2.752 | 2.40x |
+
+All runs had zero fallback solves and maximum final residual `6.20e-06`.
+See the [machine-readable sweep result](benchmarks/results/liljegren-workers-1-to-6x87600.csv).
 
 ### Input compatibility
 
@@ -99,6 +136,20 @@ to `calZenith()`, `fTg()`, `fTnwb()`, and `wbgt.Liljegren()` remain valid;
 fork-specific options are trailing optional arguments. Standard date strings
 and `POSIXct` inputs continue to work, while offset-aware ISO 8601 datetimes
 are additionally supported.
+
+### Liljegren physical and time controls
+
+`pressure` accepts one value or a vector aligned with the meteorological rows;
+the default is 1010 hPa. The C-aligned defaults are `surface_albedo = 0.45`,
+`globe_diameter = 0.0508`, and `min_wind_speed = 0.13`.
+
+Solar geometry uses latitude, longitude, and timestamp. `POSIXct`/`POSIXlt`
+timestamps and ISO 8601 strings with an offset (for example,
+`2024-06-01T20:00:00+08:00` or `2024-06-01T12:00:00Z`) identify instants and
+are normalized to UTC when `hour = TRUE`. To reproduce the original C timing
+convention for naive local-standard-time input, supply `gmt_offset` (`LST - GMT`)
+and `averaging_period` in minutes; the solar position is evaluated at the interval
+midpoint. Do not combine `gmt_offset` with an offset-bearing ISO 8601 string.
 
 Input validation is deliberately stricter for the Liljegren path:
 
