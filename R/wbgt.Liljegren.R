@@ -14,11 +14,13 @@
 #' safeguarded root solver with automatic scalar fallback for unresolved rows.
 #' @param diagnostics logical; return solver metadata in addition to the usual result.
 #' @param workers number of PSOCK worker processes for \code{engine = "batch"}.
-#' Must be an integer from 1 through the detected logical CPU count. The default
-#' of 1 preserves sequential batch execution; values greater than 1 use up to
-#' the requested number of workers, capped at the number of input rows. Each worker
-#' preprocesses its own contiguous input chunk, including solar geometry and
-#' humidity, then solves and assembles its local WBGT results.
+#' Must be an integer from 1 through the currently permitted logical CPU count.
+#' The default of 1 preserves sequential batch execution; values greater than 1
+#' use up to the requested number of workers, capped at the number of input
+#' rows. In an R check environment with \code{_R_CHECK_LIMIT_CORES_ = "true"},
+#' no more than two workers are permitted. Each worker preprocesses its own
+#' contiguous input chunk, including solar geometry and humidity, then solves
+#' and assembles its local WBGT results.
 #' @param root_tolerance numerical precision (K) used to locate heat-balance roots.
 #' @param residual_tolerance maximum accepted absolute heat-balance residual (K).
 #' Must be greater than zero and no greater than 0.01.
