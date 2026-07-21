@@ -5,6 +5,7 @@
 #' 
 #'
 #' @format Numeric vector with 92 values (days).
+#' @usage data(data_wbt.Stull)
 #' @name "data_wbt.Stull"
 "data_wbt.Stull"
 #> [1] "data_wbt.Stull"

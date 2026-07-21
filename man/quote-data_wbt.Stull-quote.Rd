@@ -9,7 +9,7 @@
 Numeric vector with 92 values (days).
 }
 \usage{
-data_wbt.Stull
+data(data_wbt.Stull)
 }
 \description{
 Dataset to check the result of \code{wbt.Stull} with the testing data \code{obs_data} 

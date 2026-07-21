@@ -13,7 +13,7 @@ List of two elements:
 }
 }
 \usage{
-data_wbgt.Bernard
+data(data_wbgt.Bernard)
 }
 \description{
 Dataset to check the result of \code{wbgt.Bernard} with the testing data \code{obs_data} 

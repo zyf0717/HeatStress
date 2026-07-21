@@ -1,7 +1,7 @@
 #' Calculation of relative humidity from temperature and dewpoint temperature.
 #'
-#' @param tas: vector of temperature in degC
-#' @param dewp: vector of dewpoint temperature in degC
+#' @param tas vector of temperature in degC
+#' @param dewp vector of dewpoint temperature in degC
 #'
 #' @return relative humidity in %
 #' @author Ana Casanueva (11.08.2016)

@@ -9,6 +9,7 @@
 #' \item data: numeric vector with the WBGT values in degC.
 #' \item Tpwb: numeric vector with the phychrometric wet bulb temperature (Tpwb) in degC.
 #' }
+#' @usage data(data_wbgt.Bernard)
 #' @name "data_wbgt.Bernard"
 "data_wbgt.Bernard"
 #> [1] "data_wbgt.Bernard"

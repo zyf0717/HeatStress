@@ -21,7 +21,7 @@ A data frame with 92 rows (days) and 6 variables. The variables are as follows:
 \url{http://www.ecad.eu/} and DOI:10.5676/EUM_SAF_CM/SARAH/V001
 }
 \usage{
-data_obs
+data(data_obs)
 }
 \description{
 A dataset containing the input variables for the heat stress indices as examples. 

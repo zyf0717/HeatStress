@@ -1,34 +1,102 @@
-Changes in version 1.0.1
-  * Added option for enforcing tas >= dewpoint
-  * Rearranged code in `wbgt.Bernard` and `wbgt.Liljegren` to improve performance
-  * Changed default tolerance to 1e-4 in `wbgt.Bernard` and `wbgt.Liljegren`
+# HeatStress NEWS
 
-Changes in version 1.0.2
-  * Added a third option to treat situations with dewpoint > tas, in `wbgt.Bernard` and `wbgt.Liljegren`.
-  * Corrected bug in zenith angle calculation with hourly data (compatibility to POSIXlt).
+## 1.1.0 — 2026-07-21
 
-Changes in version 1.0.3
-  * Corrected bug when customizing tolerance in `wbgt.Liljegren`.
-  * Change the interval to estimate Tg in `wbgt.Liljegren`.
-  
-Changes in version 1.0.4
-  * Inclusion of more heat indices.
-  
-Changes in version 1.0.5
-  * Arrange assert statments in wrapper function to speed up calculation of wbgt.Liljegren.
+This is the first release of the independently maintained HeatStress fork.
+It is not an upstream release.
 
-Changes in version 1.0.6
-  * Correct bug in assertion statement.
+### Breaking changes
 
-Changes in version 1.0.7
-  * Update README.md
-  
-Changes in version 1.0.8
-  * Update hi.R with all adjustments in https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml. Update also documentation.
-  * Check that relative humidity is not larger than 100 (in all indices depending on this variable).
-  * Add script to calculate dew point temperature from air temperature and relative humidity.
-  
-Changes in version 1.0.8.1
-  * Bug fixed in hi
+* The calculation runtime now requires R 3.4 or later. Running the test suite
+  requires R 4.1 or later because the current `testthat` dependency requires
+  that version; CI pins an R 4.1 job in addition to rolling release jobs.
+* `calZenith()` now incorporates longitude and the equation of time. Results
+  for the same UTC timestamp therefore vary by longitude, as required for
+  correct solar geometry.
+* Liljegren defaults now match the original C sensor constants:
+  `surface_albedo = 0.45`, `globe_diameter = 0.0508`, and
+  `min_wind_speed = 0.13`. Existing calculations can reproduce the former
+  constants by supplying `0.4`, `0.05`, and `0.1`, respectively.
+* Numeric Liljegren results may change because of the corrected solar geometry,
+  C-aligned defaults, adaptive root finding, and residual validation.
 
-  
+### Added
+
+* `wbgt.Liljegren()` accepts scalar or row-aligned `pressure` in hPa.
+* `calZenith()` and `wbgt.Liljegren()` accept `gmt_offset` (`LST - GMT`) and
+  `averaging_period`. Together they reproduce the original C convention of
+  evaluating solar position at the local-standard-time interval midpoint.
+* `calZenith()` and `wbgt.Liljegren()` accept `POSIXct`/`POSIXlt` instants and
+  offset-bearing ISO 8601 datetime strings, normalizing them to UTC.
+* `surface_albedo`, `globe_diameter`, and `min_wind_speed` are configurable in
+  `wbgt.Liljegren()`.
+* `diagnostics = TRUE` reports row-aligned input status, root convergence,
+  residuals, brackets, failure reasons, and batch-fallback metadata.
+* An explicit `engine = "batch"` path provides safeguarded vector root solving
+  with scalar fallback; the corrected scalar engine remains the default.
+* Reproducible benchmark harnesses and recorded end-to-end results.
+
+### Changed
+
+* Globe roots are located using an adaptively bracketed fourth-power energy
+  residual; natural wet-bulb roots use adaptive bracketing and residual
+  validation.
+* Root-location, residual-acceptance, and dew-point-policy tolerances are
+  independent controls while preserving legacy `tolerance` defaults.
+* Missing, invalid, and partially solved rows retain row alignment. Complete
+  WBGT is `NA` when either component fails, while an independently validated
+  component is retained.
+* Solar forcing is zeroed when the calculated sun elevation is non-positive.
+
+### Fixed
+
+* Longitude was previously validated but not used by `calZenith()`.
+* Removed the former fixed globe-temperature clipping behavior.
+* Batch and scalar engines now validate aligned output positions and final
+  residuals consistently.
+
+## Historical lineage
+
+The entries below describe inherited release history. They are retained for
+upgrade context and do not imply ongoing maintenance by the original project.
+
+### 1.0.8.1
+
+* Fixed the heat-index implementation.
+
+### 1.0.8
+
+* Updated the heat-index equation and documentation.
+* Validated relative humidity inputs and added dew-point calculation support.
+
+### 1.0.7
+
+* Updated documentation.
+
+### 1.0.6
+
+* Corrected an assertion statement.
+
+### 1.0.5
+
+* Reorganized Liljegren wrapper assertions for performance.
+
+### 1.0.4
+
+* Added additional heat-stress indices.
+
+### 1.0.3
+
+* Corrected custom-tolerance handling and the globe-temperature search
+  interval in `wbgt.Liljegren()`.
+
+### 1.0.2
+
+* Added a third dew-point policy for `wbgt.Bernard()` and
+  `wbgt.Liljegren()`.
+* Corrected hourly zenith handling for `POSIXlt` inputs.
+
+### 1.0.1
+
+* Added an option to enforce `tas >= dewp`.
+* Improved WBGT wrapper performance and set the default tolerance to `1e-4`.

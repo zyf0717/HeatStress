@@ -10,6 +10,7 @@
 #' \item Tpwb: natural wet bulb temperature (Tnwb) in degC.
 #' \item Tg: globe temperature in degC.
 #' }
+#' @usage data(data_wbgt.Liljegren)
 #' @name "data_wbgt.Liljegren"
 "data_wbgt.Liljegren"
 #> [1] "data_wbgt.Liljegren"

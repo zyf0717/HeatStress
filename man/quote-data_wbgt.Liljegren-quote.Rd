@@ -14,7 +14,7 @@ List of three elements:
 }
 }
 \usage{
-data_wbgt.Liljegren
+data(data_wbgt.Liljegren)
 }
 \description{
 Dataset to check the result of \code{wbgt.Liljegren} with the testing data \code{obs_data} 
