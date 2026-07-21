@@ -7,17 +7,15 @@
 
 ## R CMD check results
 
-- `R CMD check --as-cran --no-manual HeatStressR_2.1.0.tar.gz`:
-  0 errors | 0 warnings | 2 notes
-- `R CMD check --as-cran --run-donttest --no-manual HeatStressR_2.1.0.tar.gz`:
-  0 errors | 0 warnings | 2 notes
-- `R CMD check --as-cran HeatStressR_2.1.0.tar.gz`:
-  1 error | 1 warning | 4 notes, all cascading from the absence of
-  `pdflatex` for the manual
+- `R CMD check --as-cran HeatStressR_2.1.0.tar.gz`
+- `R CMD check --as-cran --run-donttest HeatStressR_2.1.0.tar.gz`
 
-The notes report a new submission and that Pandoc is not installed locally, so
-`README.md` and `NEWS` could not be checked. A full `--as-cran` check also
-requires a local LaTeX installation; `pdflatex` is not available on this host.
+0 errors | 0 warnings | 1 note
+
+The only note is:
+
+- New submission.
+
 External checks must be added here after their completion.
 
 ## New submission

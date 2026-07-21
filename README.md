@@ -102,7 +102,9 @@ result_parallel <- wbgt.Liljegren(
 )
 ```
 
-`workers` must be an integer between 1 and the detected logical CPU count.
+`workers` must be an integer between 1 and the currently permitted worker
+count, normally the detected logical CPU count. R check environments that set
+`_R_CHECK_LIMIT_CORES_` permit no more than two workers.
 Each batch call creates and stops its own worker cluster. Worker startup and
 data transfer can make small workloads slower; retain `workers = 1` when a
 single process is preferable.

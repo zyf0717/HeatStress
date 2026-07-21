@@ -31,7 +31,7 @@ test_that("workers are validated and restricted to the batch engine", {
   expect_error(do.call(wbgt.Liljegren, c(args, list(workers = 2))),
     "requires engine")
   expect_error(HeatStressR:::validate_workers(HeatStressR:::max_liljegren_workers() + 1L),
-    "detected logical CPU count")
+    "permitted worker count")
 })
 
 test_that("check core limit constrains the permitted worker maximum", {
@@ -49,7 +49,7 @@ test_that("check core limit constrains the permitted worker maximum", {
   expect_lte(limited, 2L)
   expect_identical(limited, min(unrestricted, 2L))
   expect_error(HeatStressR:::validate_workers(limited + 1L),
-    "detected logical CPU count")
+    "permitted worker count")
 })
 
 test_that("parallel batch execution preserves results and diagnostics", {

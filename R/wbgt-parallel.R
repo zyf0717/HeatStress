@@ -21,7 +21,7 @@ validate_workers <- function(workers) {
 
   maximum <- max_liljegren_workers()
   if (workers > maximum)
-    stop("'workers' must not exceed the detected logical CPU count (", maximum, ")")
+    stop("'workers' must not exceed the currently permitted worker count (", maximum, ")")
   as.integer(workers)
 }
 

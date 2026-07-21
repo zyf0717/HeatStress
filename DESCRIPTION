@@ -14,7 +14,7 @@ Description: Calculates heat-stress indices from meteorological observations,
     provides an independently maintained implementation with improved numerical
     robustness, row-level diagnostics, solar geometry, and batch processing for
     the Liljegren method.
-License: GPL (>= 3)
+License: GPL-3
 URL: https://github.com/zyf0717/HeatStressR
 BugReports: https://github.com/zyf0717/HeatStressR/issues
 RoxygenNote: 7.3.2

@@ -6,8 +6,9 @@
 
 * `wbgt.Liljegren()` batch execution accepts an explicit `workers` count.
   Values above one use cross-platform PSOCK workers while retaining output,
-  warning, and diagnostic ordering. Worker count is fully user-selected within
-  the detected logical CPU limit; it is not reduced for small batches.
+  warning, and diagnostic ordering. Worker count is user-selected within the
+  currently permitted worker limit; it is not automatically reduced based on
+  workload size except that it is capped at the number of input rows.
 * New internal parallel execution layer (`R/wbgt-parallel.R`) providing
   `max_liljegren_workers()`, `validate_workers()`, `split_liljegren_chunks()`,
   `solve_liljegren_batch_raw_chunk()`, and `solve_liljegren_parallel()`.
@@ -31,8 +32,9 @@
 * `wbgt.Liljegren()` with `engine = "batch"` automatically falls back to
   multi-worker PSOCK parallel execution when `workers > 1`, splitting rows
   across chunks and combining results with preserved diagnostic attributes.
-* Worker count validation enforces finite integer input and caps at detected
-  logical CPU count; no automatic reduction for small batches.
+* Worker count validation enforces finite integer input and caps at the
+  currently permitted worker count; no workload-size heuristic is applied
+  beyond the row-count cap.
 
 ### Fixed
 
