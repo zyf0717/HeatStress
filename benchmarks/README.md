@@ -112,6 +112,33 @@ extrapolation is 4.356 s; the 350,400-row four-worker run took 2.652 s, or
 maximum final residual of `6.20e-06`. The machine-readable result is
 [`results/liljegren-four-worker-4x87600.csv`](results/liljegren-four-worker-4x87600.csv).
 
+`benchmark-liljegren-workers-1-to-6x87600.R` measures scaling from one through
+six workers with a fixed 87,600 rows per worker. Each row compares a repeated
+input parallel run with the corresponding extrapolation of the same one-worker
+87,600-row block:
+
+```bash
+R CMD INSTALL .
+Rscript benchmarks/benchmark-liljegren-workers-1-to-6x87600.R
+```
+
+The 2026-07-21 Apple M2 Max sweep (macOS arm64, R 4.6.1) peaked at five
+workers. Times are one measurement per configuration; rerun with repeated
+measurements before treating small differences as durable:
+
+| Workers | Total rows | Seconds | Estimated speedup |
+| ---: | ---: | ---: | ---: |
+| 1 | 87,600 | 1.067 | 1.00x |
+| 2 | 175,200 | 1.700 | 1.26x |
+| 3 | 262,800 | 2.067 | 1.55x |
+| 4 | 350,400 | 2.603 | 1.64x |
+| 5 | 438,000 | 3.239 | 1.65x |
+| 6 | 525,600 | 4.289 | 1.49x |
+
+All runs had zero fallback solves and maximum final residual `6.20e-06`.
+The full data is in
+[`results/liljegren-workers-1-to-6x87600.csv`](results/liljegren-workers-1-to-6x87600.csv).
+
 
 `benchmark-liljegren-three-way.R` measures one arm of the baseline/current
 comparison. Set `BENCHMARK_ROOT` to the checkout under test and

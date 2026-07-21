@@ -114,6 +114,11 @@ On an Apple M2 Max (macOS arm64, R 4.6.1), a one-worker 87,600-row block took
 2.652 s, an estimated 1.64x speedup. It had zero scalar fallbacks and a
 maximum final residual of `6.20e-06`; see the [recorded benchmark result](benchmarks/results/liljegren-four-worker-4x87600.csv).
 
+A one-run scaling sweep with 87,600 rows per worker on the same Apple M2 Max
+peaked at five workers: 1.65× estimated speedup for 438,000 rows. Four workers
+was nearly identical at 1.64×; six workers regressed to 1.49×. See the
+[full 1–6 worker results](benchmarks/results/liljegren-workers-1-to-6x87600.csv).
+
 `pressure` accepts one value or a vector aligned with the meteorological rows;
 the default is 1010 hPa. The C-aligned defaults are `surface_albedo = 0.45`,
 `globe_diameter = 0.0508`, and `min_wind_speed = 0.13`.
