@@ -20,6 +20,10 @@ measure wrapper preprocessing, grouped zenith evaluation with timestamp-term
 reuse, and numerical solving. All scalar-versus-batch benchmarks fail when NA
 locations differ or a component differs by more than `1e-4` °C.
 
+Timed `wbgt.Liljegren()` calls use `diagnostics = FALSE`, matching the public
+default. Runners that publish fallback, residual, or worker-diagnostic fields
+perform a separate untimed `diagnostics = TRUE` call for validation.
+
 ## Datasets
 
 [`data/liljegren-multi-location-e2e.csv`](data/liljegren-multi-location-e2e.csv)
@@ -113,3 +117,6 @@ recordings, not 2.1.2 multi-location performance baselines. Refresh results
 with the runners above before citing current performance; record R version,
 platform, dataset, coordinate modes, row counts, repetitions, and commit SHA
 alongside any published timing table.
+
+The checked-in Liljegren timing results also predate the diagnostics-off timing
+policy. Regenerate them before comparing performance with this revision.

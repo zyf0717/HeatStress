@@ -140,14 +140,16 @@ benchmark_liljegren <- function(sizes, repetitions, modes) {
     scalar <- measure(
       function() wbgt.Liljegren(
         weather$tas, weather$dewp, weather$wind, weather$radiation,
-        weather$dates, lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "scalar"
+        weather$dates, lon = weather$lon, lat = weather$lat, hour = TRUE,
+        engine = "scalar", diagnostics = FALSE
       ),
       repetitions
     )
     batch <- measure(
       function() wbgt.Liljegren(
         weather$tas, weather$dewp, weather$wind, weather$radiation,
-        weather$dates, lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch"
+        weather$dates, lon = weather$lon, lat = weather$lat, hour = TRUE,
+        engine = "batch", diagnostics = FALSE
       ),
       repetitions
     )

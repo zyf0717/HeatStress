@@ -8,10 +8,7 @@
 #' @author Ana Casanueva (05.01.2017).
 #' @details Original fortran code by James C. Liljegren, translated by Bruno Lemke into Visual Basic (VBA).
 #' Uses an adaptively bracketed signed heat-balance residual.
-#' @export
-#' 
-
-
+#' @noRd
 fTg_solution <- function(tas, relh, Pair, wind, min.speed, radiation, propDirect,
                          zenith, SurfAlbedo = 0.45, tolerance = 1e-4,
                          root_tolerance = tolerance * 0.01,
@@ -115,6 +112,15 @@ fTg_solution <- function(tas, relh, Pair, wind, min.speed, radiation, propDirect
     failure_reason = if (converged) "none" else "residual_validation")
 }
 
+#' Calculation of the globe temperature.
+#'
+#' @inheritParams fTnwb
+#' @param globe_diameter black-globe diameter in m. Default: 0.0508.
+#' @return Globe temperature in degC.
+#' @author Ana Casanueva (05.01.2017).
+#' @details Original fortran code by James C. Liljegren, translated by Bruno Lemke into Visual Basic (VBA).
+#' Uses an adaptively bracketed signed heat-balance residual.
+#' @export
 fTg <- function(tas, relh, Pair, wind, min.speed, radiation, propDirect,
                 zenith, SurfAlbedo = 0.45, tolerance = 1e-4,
                 globe_diameter = 0.0508) {

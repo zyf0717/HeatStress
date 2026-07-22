@@ -12,8 +12,7 @@
 #' 
 #' @author Ana Casanueva (05.01.2017).
 #' @details Reference: Bedingfield and Drew, eqn 32.
-
-
+#' @noRd
 h_cylinder_in_air_core <- function(Tk, Pair, speed, min.speed, diam.wick){
   
   # Constants
@@ -39,6 +38,17 @@ h_cylinder_in_air_core <- function(Tk, Pair, speed, min.speed, diam.wick){
   Nu * therm.con / diam.wick
 }
 
+#' Calculate the convective heat transfer coefficient for a long cylinder in cross flow.
+#'
+#' @param Tk value of air temperature in Kelvin.
+#' @param Pair value of air pressure in hPa.
+#' @param speed value of wind speed in m/s.
+#' @param min.speed value of minimum wind speed in m/s.
+#' @param diam.wick diameter of the cylinder in m.
+#'
+#' @return Convective heat transfer coefficient for a long cylinder, W/(m2 K).
+#' @author Ana Casanueva (05.01.2017).
+#' @details Reference: Bedingfield and Drew, eqn 32.
 h_cylinder_in_air <- function(Tk, Pair, speed, min.speed, diam.wick){
   h_cylinder_in_air_core(Tk, Pair, speed, min.speed, diam.wick)
 }

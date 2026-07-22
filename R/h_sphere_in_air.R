@@ -9,8 +9,7 @@
 #' 
 #' @author Ana Casanueva (05.01.2017).
 #' @details Reference: Bird, Stewart, and Lightfoot (BSL), page 409.
-
-
+#' @noRd
 h_sphere_in_air_core <- function(Tk, Pair, speed, min.speed, diam.globe){
   
   
@@ -37,6 +36,14 @@ h_sphere_in_air_core <- function(Tk, Pair, speed, min.speed, diam.globe){
   Nu * therm.con / diam.globe
 }
 
+#' Calculate the convective heat transfer coefficient for flow around a sphere.
+#'
+#' @param diam.globe diameter of the sphere in m.
+#' @inheritParams h_cylinder_in_air
+#'
+#' @return Convective heat transfer coefficient for flow around a sphere, W/(m2 K).
+#' @author Ana Casanueva (05.01.2017).
+#' @details Reference: Bird, Stewart, and Lightfoot (BSL), page 409.
 h_sphere_in_air <- function(Tk, Pair, speed, min.speed, diam.globe){
   h_sphere_in_air_core(Tk, Pair, speed, min.speed, diam.globe)
 }
