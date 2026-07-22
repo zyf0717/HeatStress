@@ -12,10 +12,10 @@ diffusivity(Tk, Pair)
 \item{Pair}{value of air pressure in hPa.}
 }
 \value{
-diffusivity of water vapor in air, m2/s
+Diffusivity of water vapor in air, m2/s.
 }
 \description{
-Compute the diffusivity of water vapor in air, m2/s
+Compute the diffusivity of water vapor in air.
 }
 \details{
 Reference: BSL, page 505.

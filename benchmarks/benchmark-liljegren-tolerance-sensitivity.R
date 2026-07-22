@@ -19,10 +19,16 @@ run <- function(residual_tolerance, engine = "batch") {
   measurement <- liljegren_measure(function() suppressWarnings(wbgt.Liljegren(
     weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
     lon = weather$lon, lat = weather$lat, hour = TRUE, engine = engine,
-    diagnostics = TRUE, root_tolerance = 1e-6,
+    diagnostics = FALSE, root_tolerance = 1e-6,
     residual_tolerance = residual_tolerance
   )), 1L)
-  list(value = measurement$value, runtime = measurement$seconds)
+  diagnostics <- suppressWarnings(wbgt.Liljegren(
+    weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
+    lon = weather$lon, lat = weather$lat, hour = TRUE, engine = engine,
+    diagnostics = TRUE, root_tolerance = 1e-6,
+    residual_tolerance = residual_tolerance
+  ))$diagnostics
+  list(value = measurement$value, diagnostics = diagnostics, runtime = measurement$seconds)
 }
 
 limits <- c(1e-4, 3e-4, 1e-3, 3e-3, 1e-2)
@@ -30,7 +36,7 @@ baseline <- run(limits[1])
 scalar <- run(limits[1], "scalar")
 summarize <- function(limit) {
   current <- if (limit == limits[1]) baseline else run(limit)
-  d <- current$value$diagnostics
+  d <- current$diagnostics
   residuals <- abs(c(d$Tg$final_residual[d$Tg$converged],
     d$Tnwb$final_residual[d$Tnwb$converged]))
   failures <- c(d$Tg$failure_reason[!d$Tg$converged],
@@ -54,7 +60,7 @@ summarize <- function(limit) {
     maximum_WBGT_difference_from_baseline = delta("data"),
     runtime_seconds = current$runtime,
     fallback_count = sum(d$Tg$used_fallback, na.rm = TRUE) + sum(d$Tnwb$used_fallback, na.rm = TRUE),
-    scalar_batch_decisions_match = identical(d$complete_wbgt, scalar$value$diagnostics$complete_wbgt),
+    scalar_batch_decisions_match = identical(d$complete_wbgt, scalar$diagnostics$complete_wbgt),
     row.names = NULL
   )
 }

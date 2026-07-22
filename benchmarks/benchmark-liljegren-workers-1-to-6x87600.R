@@ -21,9 +21,15 @@ measure_batch <- function(weather, workers) {
   liljegren_measure(function() suppressWarnings(wbgt.Liljegren(
     weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
     lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch",
-    workers = workers, diagnostics = TRUE
+    workers = workers, diagnostics = FALSE
   )), 1L)
 }
+
+inspect_batch <- function(weather, workers) suppressWarnings(wbgt.Liljegren(
+  weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
+  lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch",
+  workers = workers, diagnostics = TRUE
+))$diagnostics
 
 rows <- lapply(modes, function(mode) {
   baseline_weather <- liljegren_workload(base_rows, mode = mode, path = dataset)
@@ -33,7 +39,7 @@ rows <- lapply(modes, function(mode) {
     weather <- if (worker_count == 1L) baseline_weather else
       liljegren_workload(total_rows, mode = mode, path = dataset)
     run <- if (worker_count == 1L) baseline else measure_batch(weather, worker_count)
-    diagnostics <- run$value$diagnostics
+    diagnostics <- inspect_batch(weather, worker_count)
     residuals <- liljegren_maximum_residual(diagnostics)
     data.frame(
       rows_per_worker = base_rows, total_rows = total_rows,

@@ -31,7 +31,7 @@
 #' calZenith("1981-06-15 10:00:00",  -5.66, 40.96, hour=TRUE)
 #' calZenith("1981-06-15T18:00:00+08:00", -5.66, 40.96, hour=TRUE)
 #' }
-#' 
+#' @noRd
 parse_wall_datetime <- function(x) {
   result <- rep(NA_real_, length(x))
   x <- sub("T", " ", x, fixed = TRUE)
@@ -148,6 +148,36 @@ calculate_zenith_from_solar_terms <- function(utc_minutes, equation_of_time,
   radToDeg(acos(cos_zenith))
 }
 
+#' Calculate zenith angle in degrees.
+#'
+#' @param dates vector of dates, \code{POSIXct}/\code{POSIXlt} instants, or ISO 8601
+#' datetime strings. With \code{hour = TRUE}, offset-bearing ISO 8601 strings are
+#' interpreted as instants and normalized to UTC. If a date-only value is
+#' provided, the default time is 12:00 UTC.
+#' @param lon single numeric longitude for the location, in degrees.
+#' @param lat single numeric latitude for the location, in degrees.
+#' @param hour logical. If TRUE, calculate from the full UTC timestamp. Default:
+#' FALSE (12:00 UTC is used for date-only inputs).
+#' @param gmt_offset optional local-standard-time offset from GMT, in hours
+#' (\code{LST - GMT}). When supplied, timestamps are interpreted as local standard
+#' time rather than timezone-aware instants.
+#' @param averaging_period averaging interval in minutes. Solar position is
+#' evaluated at the interval midpoint, matching the original C implementation.
+#'
+#' @return Numeric vector of zenith angles in degrees, aligned with \code{dates}.
+#' @details \code{lon} and \code{lat} must be finite scalar values within their standard
+#' ranges. Solar time incorporates longitude and the equation of time. Missing
+#' dates return \code{NA} in the corresponding output position. Do not combine
+#' \code{gmt_offset} with an offset-bearing ISO 8601 string: the latter already
+#' identifies an instant.
+#' @author Anke Duguay-Tetzlaff, Translated to R by Ana Casanueva (17.01.2017)
+#' @export
+#'
+#' @examples \dontrun{
+#' calZenith("1981-06-15", -5.66, 40.96)
+#' calZenith("1981-06-15 10:00:00", -5.66, 40.96, hour = TRUE)
+#' calZenith("1981-06-15T18:00:00+08:00", -5.66, 40.96, hour = TRUE)
+#' }
 calZenith <- function(dates, lon, lat, hour = FALSE, gmt_offset = NULL,
                       averaging_period = 0) {
   assertthat::assert_that(

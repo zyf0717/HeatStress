@@ -101,9 +101,9 @@ Must be an integer from 1 through the currently permitted logical CPU count.
 The default of 1 preserves sequential batch execution; values greater than 1
 use up to the requested number of workers, capped at the number of input
 rows. In an R check environment with \code{_R_CHECK_LIMIT_CORES_ = "true"},
-no more than two workers are permitted. Each worker preprocesses its own
-contiguous input chunk, including solar geometry and humidity, then solves
-and assembles its local WBGT results.}
+no more than two workers are permitted. The parent computes solar geometry
+once; each worker preprocesses its own contiguous meteorological chunk,
+including humidity, then solves and assembles its local WBGT results.}
 }
 \value{
 A list of:

@@ -70,9 +70,9 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 #' The default of 1 preserves sequential batch execution; values greater than 1
 #' use up to the requested number of workers, capped at the number of input
 #' rows. In an R check environment with \code{_R_CHECK_LIMIT_CORES_ = "true"},
-#' no more than two workers are permitted. Each worker preprocesses its own
-#' contiguous input chunk, including solar geometry and humidity, then solves
-#' and assembles its local WBGT results.
+#' no more than two workers are permitted. The parent computes solar geometry
+#' once; each worker preprocesses its own contiguous meteorological chunk,
+#' including humidity, then solves and assembles its local WBGT results.
 #' @param root_tolerance numerical precision (K) used to locate heat-balance roots.
 #' @param residual_tolerance maximum accepted absolute heat-balance residual (K).
 #' Must be greater than zero and no greater than 0.01.
@@ -92,8 +92,6 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 #' automatically. Do not combine it with an offset-bearing ISO 8601 string.
 #' @param averaging_period averaging interval in minutes. Solar position is
 #' evaluated at its midpoint; defaults to 0.
-#' @inheritParams fTnwb
-#' @inheritParams calZenith
 #' @importFrom stats optimize
 #' 
 #' @return A list of:
@@ -213,6 +211,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   ndates <- length(tas)
   requested_workers <- workers
   effective_workers <- min(workers, ndates)
+  parallel_failure_summary <- NULL
   assertthat::assert_that(is.numeric(pressure) && length(pressure) %in% c(1L, ndates),
     msg="'pressure' must be a numeric scalar or match the meteorological input length")
   assertthat::assert_that(all((is.na(pressure) & !is.nan(pressure)) |
@@ -242,6 +241,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
     parallel_result <- solve_liljegren_parallel(
       tas = tas, dewp = dewp, wind = wind, radiation = radiation,
       zenith = zenith_rad, pressure = pressure, workers = effective_workers,
+      diagnostics = diagnostics,
       controls = list(
         noNAs = noNAs, swap = swap,
         dewpoint_tolerance = dewpoint_tolerance, min_wind_speed = min_wind_speed,
@@ -253,22 +253,26 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
     wbgt.value <- parallel_result$data
     Tg <- parallel_result$Tg
     Tnwb <- parallel_result$Tnwb
-    input_valid <- parallel_result$input_valid
-    input_status <- parallel_result$input_status
-    solar_geometry_mismatch <- parallel_result$solar_geometry_mismatch
-    valid_idx <- parallel_result$valid_idx
-    Tg.batch <- parallel_result$Tg.batch
-    Tnwb.batch <- parallel_result$Tnwb.batch
     effective_workers <- parallel_result$workers
-    Tg.converged <- rep(NA, ndates)
-    Tnwb.converged <- rep(NA, ndates)
-    Tg.failure.reason <- rep("not_attempted", ndates)
-    Tnwb.failure.reason <- rep("not_attempted", ndates)
-    if (length(valid_idx)) {
-      Tg.converged[valid_idx] <- attr(Tg.batch, "converged")
-      Tnwb.converged[valid_idx] <- attr(Tnwb.batch, "converged")
-      Tg.failure.reason[valid_idx] <- attr(Tg.batch, "failure_reason")
-      Tnwb.failure.reason[valid_idx] <- attr(Tnwb.batch, "failure_reason")
+    if (diagnostics) {
+      input_valid <- parallel_result$input_valid
+      input_status <- parallel_result$input_status
+      solar_geometry_mismatch <- parallel_result$solar_geometry_mismatch
+      valid_idx <- parallel_result$valid_idx
+      Tg.batch <- parallel_result$Tg.batch
+      Tnwb.batch <- parallel_result$Tnwb.batch
+      Tg.converged <- rep(NA, ndates)
+      Tnwb.converged <- rep(NA, ndates)
+      Tg.failure.reason <- rep("not_attempted", ndates)
+      Tnwb.failure.reason <- rep("not_attempted", ndates)
+      if (length(valid_idx)) {
+        Tg.converged[valid_idx] <- attr(Tg.batch, "converged")
+        Tnwb.converged[valid_idx] <- attr(Tnwb.batch, "converged")
+        Tg.failure.reason[valid_idx] <- attr(Tg.batch, "failure_reason")
+        Tnwb.failure.reason[valid_idx] <- attr(Tnwb.batch, "failure_reason")
+      }
+    } else {
+      parallel_failure_summary <- parallel_result$failure_summary
     }
   } else {
   Pair <- rep(pressure, length.out = ndates)
@@ -366,19 +370,32 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
     }
   }
   }
-  Tg.failed <- input_valid & !Tg.converged
-  Tnwb.failed <- input_valid & !Tnwb.converged
-  if (any(Tg.failed | Tnwb.failed)) {
+  if (is.null(parallel_failure_summary)) {
+    Tg.failed <- input_valid & !Tg.converged
+    Tnwb.failed <- input_valid & !Tnwb.converged
+    failed_rows <- sum(Tg.failed | Tnwb.failed)
+    attempted_rows <- sum(input_valid)
     reason_counts <- function(reasons, failed) {
       counts <- table(factor(reasons[failed], levels = c("unbracketed", "non_finite", "residual_validation")))
       sprintf("  unbracketed: %d\n  non-finite: %d\n  residual-invalid: %d",
         counts[["unbracketed"]], counts[["non_finite"]], counts[["residual_validation"]])
     }
+    tg_reason_counts <- reason_counts(Tg.failure.reason, Tg.failed)
+    tnwb_reason_counts <- reason_counts(Tnwb.failure.reason, Tnwb.failed)
+  } else {
+    failed_rows <- parallel_failure_summary$failed_rows
+    attempted_rows <- parallel_failure_summary$attempted_rows
+    reason_counts <- function(counts) sprintf(
+      "  unbracketed: %d\n  non-finite: %d\n  residual-invalid: %d",
+      counts[["unbracketed"]], counts[["non_finite"]], counts[["residual_validation"]]
+    )
+    tg_reason_counts <- reason_counts(parallel_failure_summary$Tg)
+    tnwb_reason_counts <- reason_counts(parallel_failure_summary$Tnwb)
+  }
+  if (failed_rows) {
     warning(sprintf(
       "WBGT heat-balance solving failed for %d of %d attempted rows.\nTg:\n%s\nTnwb:\n%s\nComplete WBGT was set to NA for affected rows. Validated component temperatures were retained. Use diagnostics = TRUE for row-level details.",
-      sum(Tg.failed | Tnwb.failed), sum(input_valid),
-      reason_counts(Tg.failure.reason, Tg.failed),
-      reason_counts(Tnwb.failure.reason, Tnwb.failed)
+      failed_rows, attempted_rows, tg_reason_counts, tnwb_reason_counts
     ), call. = FALSE)
   }
   # *******************************

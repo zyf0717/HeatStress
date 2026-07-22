@@ -2,7 +2,7 @@
 % Please edit documentation in R/h_sphere_in_air.R
 \name{h_sphere_in_air}
 \alias{h_sphere_in_air}
-\title{Calculate the convective heat tranfer coefficient for flow around a sphere.}
+\title{Calculate the convective heat transfer coefficient for flow around a sphere.}
 \usage{
 h_sphere_in_air(Tk, Pair, speed, min.speed, diam.globe)
 }
@@ -18,10 +18,10 @@ h_sphere_in_air(Tk, Pair, speed, min.speed, diam.globe)
 \item{diam.globe}{diameter of the sphere in m.}
 }
 \value{
-Convective heat tranfer coefficient for flow around a sphere, W/(m2 K).
+Convective heat transfer coefficient for flow around a sphere, W/(m2 K).
 }
 \description{
-Calculate the convective heat tranfer coefficient for flow around a sphere.
+Calculate the convective heat transfer coefficient for flow around a sphere.
 }
 \details{
 Reference: Bird, Stewart, and Lightfoot (BSL), page 409.

@@ -171,6 +171,82 @@ solve_liljegren_batch_raw_chunk <- function(chunk, controls) {
   )
 }
 
+liljegren_failure_count_names <- c(
+  "unbracketed", "non_finite", "residual_validation"
+)
+
+summarize_liljegren_chunk_failures <- function(result) {
+  empty_counts <- stats::setNames(integer(length(liljegren_failure_count_names)),
+    liljegren_failure_count_names)
+  summarize_component <- function(batch_result) {
+    if (is.null(batch_result)) return(empty_counts)
+    converged <- attr(batch_result, "converged")
+    reasons <- attr(batch_result, "failure_reason")
+    if (length(converged) != length(batch_result) ||
+        length(reasons) != length(batch_result)) {
+      stop("batch solver result has malformed failure diagnostics")
+    }
+    stats::setNames(as.integer(table(factor(reasons[!converged],
+      levels = liljegren_failure_count_names))), liljegren_failure_count_names)
+  }
+
+  tg_converged <- if (is.null(result$Tg.batch)) logical() else
+    attr(result$Tg.batch, "converged")
+  tnwb_converged <- if (is.null(result$Tnwb.batch)) logical() else
+    attr(result$Tnwb.batch, "converged")
+  if (length(tg_converged) != length(tnwb_converged))
+    stop("batch solver chunk components have inconsistent lengths")
+
+  list(
+    attempted_rows = length(result$valid_idx),
+    failed_rows = sum(!tg_converged | !tnwb_converged),
+    Tg = summarize_component(result$Tg.batch),
+    Tnwb = summarize_component(result$Tnwb.batch)
+  )
+}
+
+compact_liljegren_chunk_result <- function(result) {
+  list(
+    n = result$n,
+    data = result$data,
+    Tg = result$Tg,
+    Tnwb = result$Tnwb,
+    failure_summary = summarize_liljegren_chunk_failures(result)
+  )
+}
+
+combine_liljegren_failure_summaries <- function(chunk_results) {
+  summaries <- lapply(chunk_results, `[[`, "failure_summary")
+  if (!length(summaries) || any(vapply(summaries, is.null, logical(1))))
+    stop("parallel chunk failure summaries are required")
+  count_fields <- c("Tg", "Tnwb")
+  for (summary in summaries) {
+    if (!identical(sort(names(summary)),
+      sort(c("attempted_rows", "failed_rows", count_fields)))) {
+      stop("parallel chunk failure summary is malformed")
+    }
+    if (!all(vapply(summary[c("attempted_rows", "failed_rows")],
+      function(value) length(value) == 1L && is.finite(value) && value >= 0,
+      logical(1)))) {
+      stop("parallel chunk failure counts are malformed")
+    }
+    for (field in count_fields) {
+      counts <- summary[[field]]
+      if (!identical(names(counts), liljegren_failure_count_names) ||
+          length(counts) != length(liljegren_failure_count_names) ||
+          any(!is.finite(counts) | counts < 0)) {
+        stop("parallel chunk component failure counts are malformed")
+      }
+    }
+  }
+  list(
+    attempted_rows = sum(vapply(summaries, `[[`, numeric(1), "attempted_rows")),
+    failed_rows = sum(vapply(summaries, `[[`, numeric(1), "failed_rows")),
+    Tg = Reduce(`+`, lapply(summaries, `[[`, "Tg")),
+    Tnwb = Reduce(`+`, lapply(summaries, `[[`, "Tnwb"))
+  )
+}
+
 combine_parallel_chunk_field <- function(chunk_results, field) {
   values <- lapply(chunk_results, `[[`, field)
   expected_lengths <- vapply(chunk_results, `[[`, integer(1), "n")
@@ -180,7 +256,7 @@ combine_parallel_chunk_field <- function(chunk_results, field) {
 }
 
 solve_liljegren_parallel <- function(tas, dewp, wind, radiation, zenith,
-                                     pressure, workers, controls) {
+                                     pressure, workers, controls, diagnostics) {
   n <- length(tas)
   effective_workers <- min(workers, n)
   if (effective_workers < 1L)
@@ -198,10 +274,23 @@ solve_liljegren_parallel <- function(tas, dewp, wind, radiation, zenith,
     loadNamespace("HeatStressR")
     NULL
   })
-  worker <- function(chunk, controls) {
-    utils::getFromNamespace("solve_liljegren_batch_raw_chunk", "HeatStressR")(chunk, controls)
+  worker <- function(chunk, controls, diagnostics) {
+    result <- utils::getFromNamespace("solve_liljegren_batch_raw_chunk", "HeatStressR")(chunk,
+      controls)
+    if (diagnostics) result else
+      utils::getFromNamespace("compact_liljegren_chunk_result", "HeatStressR")(result)
   }
-  chunk_results <- parallel::parLapply(cluster, chunks, worker, controls = controls)
+  chunk_results <- parallel::parLapply(cluster, chunks, worker, controls = controls,
+    diagnostics = diagnostics)
+  if (!diagnostics) {
+    return(list(
+      data = combine_parallel_chunk_field(chunk_results, "data"),
+      Tg = combine_parallel_chunk_field(chunk_results, "Tg"),
+      Tnwb = combine_parallel_chunk_field(chunk_results, "Tnwb"),
+      failure_summary = combine_liljegren_failure_summaries(chunk_results),
+      workers = effective_workers
+    ))
+  }
   valid_idx <- as.integer(unlist(Map(function(result, index) {
     index[result$valid_idx]
   }, chunk_results, indices), use.names = FALSE))

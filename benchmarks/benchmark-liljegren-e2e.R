@@ -20,12 +20,19 @@ rows <- lapply(modes, function(mode) lapply(sizes, function(n) {
   weather <- liljegren_workload(n, mode = mode, path = dataset)
   scalar <- liljegren_measure(function() suppressWarnings(wbgt.Liljegren(
     weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
-    lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "scalar"
+    lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "scalar",
+    diagnostics = FALSE
   )), repetitions)
   batch <- liljegren_measure(function() suppressWarnings(wbgt.Liljegren(
     weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
-    lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch", diagnostics = TRUE
+    lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch",
+    diagnostics = FALSE
   )), repetitions)
+  batch_diagnostics <- suppressWarnings(wbgt.Liljegren(
+    weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
+    lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch",
+    diagnostics = TRUE
+  ))$diagnostics
   comparison <- liljegren_compare_results(scalar$value, batch$value)
   data.frame(
     revision = label, rows = n, repetitions = repetitions,
@@ -35,9 +42,9 @@ rows <- lapply(modes, function(mode) lapply(sizes, function(n) {
     max_data_difference = comparison$max_data_difference,
     max_Tg_difference = comparison$max_Tg_difference,
     max_Tnwb_difference = comparison$max_Tnwb_difference,
-    batch_fallback_count = sum(batch$value$diagnostics$Tg$used_fallback, na.rm = TRUE) +
-      sum(batch$value$diagnostics$Tnwb$used_fallback, na.rm = TRUE),
-    batch_max_final_residual = liljegren_maximum_residual(batch$value$diagnostics),
+    batch_fallback_count = sum(batch_diagnostics$Tg$used_fallback, na.rm = TRUE) +
+      sum(batch_diagnostics$Tnwb$used_fallback, na.rm = TRUE),
+    batch_max_final_residual = liljegren_maximum_residual(batch_diagnostics),
     na_aligned = comparison$na_aligned,
     row.names = NULL
   )

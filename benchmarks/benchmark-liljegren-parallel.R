@@ -33,29 +33,39 @@ rows <- lapply(modes, function(mode) lapply(sizes, function(n) {
     wbgt.Liljegren(
       weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
       lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch",
-      workers = worker_count, diagnostics = TRUE
+      workers = worker_count, diagnostics = FALSE
     )
   ), repetitions))
   names(runs) <- as.character(workers)
+  diagnostic_runs <- lapply(workers, function(worker_count) suppressWarnings(
+    wbgt.Liljegren(
+      weather$tas, weather$dewp, weather$wind, weather$radiation, weather$dates,
+      lon = weather$lon, lat = weather$lat, hour = TRUE, engine = "batch",
+      workers = worker_count, diagnostics = TRUE
+    )$diagnostics
+  ))
+  names(diagnostic_runs) <- as.character(workers)
   reference <- runs[["1"]]
+  reference_diagnostics <- diagnostic_runs[["1"]]
   do.call(rbind, lapply(workers, function(worker_count) {
     candidate <- runs[[as.character(worker_count)]]
+    candidate_diagnostics <- diagnostic_runs[[as.character(worker_count)]]
     comparison <- liljegren_compare_results(reference$value, candidate$value)
     data.frame(
       rows = n, requested_workers = worker_count,
-      effective_workers = candidate$value$diagnostics$workers,
+      effective_workers = candidate_diagnostics$workers,
       repetitions = repetitions, liljegren_workload_metadata(weather),
       seconds = candidate$seconds, speedup_vs_one_worker = reference$seconds / candidate$seconds,
       rows_per_second = n / candidate$seconds,
       max_data_difference = comparison$max_data_difference,
       max_Tg_difference = comparison$max_Tg_difference,
       max_Tnwb_difference = comparison$max_Tnwb_difference,
-      diagnostics_identical = diagnostics_equal(reference$value$diagnostics,
-        candidate$value$diagnostics),
+      diagnostics_identical = diagnostics_equal(reference_diagnostics,
+        candidate_diagnostics),
       na_aligned = comparison$na_aligned,
-      fallback_count = sum(candidate$value$diagnostics$Tg$used_fallback, na.rm = TRUE) +
-        sum(candidate$value$diagnostics$Tnwb$used_fallback, na.rm = TRUE),
-      max_final_residual = liljegren_maximum_residual(candidate$value$diagnostics),
+      fallback_count = sum(candidate_diagnostics$Tg$used_fallback, na.rm = TRUE) +
+        sum(candidate_diagnostics$Tnwb$used_fallback, na.rm = TRUE),
+      max_final_residual = liljegren_maximum_residual(candidate_diagnostics),
       row.names = NULL
     )
   }))

@@ -101,6 +101,32 @@ For `workers > 1`, the parent process computes aligned solar geometry once,
 then workers preprocess contiguous pressure, forcing, dewpoint-policy, and
 humidity chunks before solving and assembling local WBGT values.
 
+### External `foreach` versus in-package workers
+
+Choose one parallel layer per calculation. `workers > 1` is appropriate for a
+single large `wbgt.Liljegren()` call: HeatStressR creates a temporary PSOCK
+cluster and splits that call's rows. For many independent locations, files, or
+time partitions, an external `foreach` backend is usually preferable because
+it can keep its worker pool alive across calls. In that case, use
+`engine = "batch", workers = 1L` inside each `foreach` task.
+
+```r
+results <- foreach::foreach(shard = weather_shards,
+  .packages = "HeatStressR") %dopar% {
+  wbgt.Liljegren(
+    shard$tas, shard$dewp, shard$wind, shard$radiation, shard$dates,
+    lon = shard$lon, lat = shard$lat, hour = TRUE,
+    engine = "batch", workers = 1L
+  )
+}
+```
+
+Do not use `workers > 1` inside an externally parallel `foreach` task unless
+you deliberately provision nested worker pools. Nested processes oversubscribe
+CPUs, multiply memory use, and repeatedly pay PSOCK startup and serialization
+costs. The external backend and HeatStressR must be installed on each worker;
+the example's `.packages` argument loads HeatStressR in `foreach` workers.
+
 The 2.1.2 grouped-coordinate worker sweep used the 192-location, 129,024-row
 fixture with three repetitions on macOS arm64, R 4.6.1:
 

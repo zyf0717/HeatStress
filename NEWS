@@ -1,5 +1,19 @@
 # HeatStressR NEWS
 
+## 2.1.4 — 2026-07-22
+
+* Parallel batch calls with `diagnostics = FALSE` now return compact worker
+  summaries rather than row-level solver metadata. Final values and aggregate
+  numerical-failure warnings are unchanged, while PSOCK result transfer is
+  substantially reduced.
+* Liljegren performance runners now time the public default
+  `diagnostics = FALSE`; residual, fallback, and worker-parity validation is
+  performed separately outside timed sections.
+* Documented how to choose external `foreach` parallelism versus in-package
+  `workers`, including the requirement to avoid nested worker pools.
+* Updated documentation generation to roxygen2 8.0.0 and bound affected
+  roxygen blocks to their exported public functions.
+
 ## 2.1.3 — 2026-07-22
 
 * `wbgt.Liljegren()` now caches timestamp-only solar-time terms and reuses

@@ -66,6 +66,40 @@ test_that("parallel batch execution preserves results and diagnostics", {
   expect_identical(parallel, sequential)
 })
 
+test_that("parallel execution omits row diagnostics when diagnostics are disabled", {
+  skip_if(HeatStressR:::max_liljegren_workers() < 2L,
+    "requires at least two logical CPUs")
+  x <- parallel_fixture()
+  run <- function(workers) suppressWarnings(wbgt.Liljegren(
+    x$tas, x$dewp, x$wind, x$radiation, x$dates,
+    lon = -5.66, lat = 40.96, hour = TRUE, engine = "batch",
+    workers = workers, diagnostics = FALSE
+  ))
+  sequential <- run(1L)
+  parallel <- run(2L)
+  expect_null(sequential$diagnostics)
+  expect_null(parallel$diagnostics)
+  expect_identical(parallel, sequential)
+})
+
+test_that("parallel diagnostics-off execution preserves numerical failure warnings", {
+  skip_if(HeatStressR:::max_liljegren_workers() < 2L,
+    "requires at least two logical CPUs")
+  warnings <- character()
+  result <- withCallingHandlers(wbgt.Liljegren(
+    tas = c(22, 22), dewp = c(10, 10), wind = c(0, 0), radiation = c(Inf, Inf),
+    dates = as.POSIXct(c("2024-06-01", "2024-06-01"), tz = "UTC"),
+    lon = 0, lat = 0, engine = "batch", workers = 2L, diagnostics = FALSE
+  ), warning = function(w) {
+    warnings <<- c(warnings, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  })
+  expect_null(result$diagnostics)
+  expect_length(warnings, 1L)
+  expect_match(warnings, "failed for 2 of 2 attempted rows")
+  expect_match(warnings, "non-finite: 2")
+})
+
 test_that("parallel batch execution supports row-aligned coordinates", {
   skip_if(HeatStressR:::max_liljegren_workers() < 2L,
     "requires at least two logical CPUs")
