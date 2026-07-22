@@ -48,9 +48,9 @@ indexShow()
 ### Performance and solver scope
 
 `calZenith()` now processes date vectors in one pass. `wbgt.Liljegren()`
-precomputes aligned zenith angles once per distinct coordinate pair. Its
-default is the scalar R heat-balance solver; the vectorized batch solver is an
-explicit opt-in.
+precomputes aligned zenith angles by coordinate pair and reuses timestamp-only
+solar terms for repeated instants. Its default is the scalar R heat-balance
+solver; the vectorized batch solver is an explicit opt-in.
 
 The 2.1.2 coordinate-aware E2E benchmark uses a 192-location, 129,024-row
 hourly fixture and three repetitions on macOS arm64 with R 4.6.1:

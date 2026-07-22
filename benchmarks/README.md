@@ -16,9 +16,9 @@ from the new coordinate-grouping path and its no-reuse limit.
 
 Benchmark setup—CSV loading, coordinate assignment, and radiation construction
 from solar geometry—is outside the timed `wbgt.Liljegren()` call. Timings thus
-measure wrapper preprocessing, grouped zenith evaluation, and numerical
-solving. All scalar-versus-batch benchmarks fail when NA locations differ or a
-component differs by more than `1e-4` °C.
+measure wrapper preprocessing, grouped zenith evaluation with timestamp-term
+reuse, and numerical solving. All scalar-versus-batch benchmarks fail when NA
+locations differ or a component differs by more than `1e-4` °C.
 
 ## Datasets
 
@@ -51,6 +51,7 @@ larger row counts.
 | `benchmark-liljegren-workers-1-to-6x87600.R` | Strong-scaling workload sweep | fixed, grouped |
 | `benchmark-liljegren-tolerance-sensitivity.R` | Residual-tolerance behavior | grouped |
 | `benchmark-liljegren-unresolved.R` | Failure and solar-geometry diagnostics | grouped |
+| `benchmark-liljegren-zenith-unique.R` | Isolated zenith timing with unique or shared coordinates | unique, shared |
 | `benchmark-vectorization.R` | Allocation/timing comparison plus component benchmarks | fixed, grouped, unique for Liljegren |
 | `benchmark-liljegren-three-way.R` | Historical pre-fork comparison | fixed only |
 
@@ -76,6 +77,23 @@ LILJEGREN_BENCHMARK_DATASET=benchmarks/data/liljegren-multi-location-28d.csv \
 E2E_SIZES=129024 E2E_COORDINATE_MODES=fixed,grouped BENCH_REPS=3 \
 BENCHMARK_OUTPUT=benchmarks/results/liljegren-e2e-2.1.2.csv \
   Rscript benchmarks/benchmark-liljegren-e2e.R
+```
+
+Measure the no-reuse solar-geometry limit (129,024 unique hourly
+timestamp-longitude-latitude triplets):
+
+```bash
+BENCH_REPS=3 \
+BENCHMARK_OUTPUT=benchmarks/results/liljegren-zenith-unique-129024.csv \
+  Rscript benchmarks/benchmark-liljegren-zenith-unique.R
+```
+
+For one shared coordinate pair across the same distinct hourly timestamps:
+
+```bash
+ZENITH_COORDINATE_MODE=shared BENCH_REPS=3 \
+BENCHMARK_OUTPUT=benchmarks/results/liljegren-zenith-shared-129024.csv \
+  Rscript benchmarks/benchmark-liljegren-zenith-unique.R
 ```
 
 Parallel runners require an installed package because PSOCK workers load the
