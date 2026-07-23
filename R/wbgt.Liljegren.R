@@ -83,6 +83,9 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour) {
 #' matching the original Liljegren C implementation.
 #' @param min_wind_speed lower bound applied to wind speed in m/s. Defaults to
 #' 0.13 m/s, matching the original Liljegren C implementation.
+#' @param direct_fraction proportion of supplied shortwave radiation treated as
+#' direct, `direct / (direct + diffuse)`. Supply one value or a vector aligned
+#' with the meteorological inputs; defaults to 0.8.
 #' @param solar_time \code{"timestamp"} uses each full timestamp;
 #' \code{"date_noon"} evaluates each date at 12:00 UTC. \code{NULL} preserves
 #' the legacy \code{hour} behavior.
@@ -104,7 +107,8 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour) {
 #' The batch engine is the default implementation. It uses explicitly requested
 #' PSOCK workers when \code{workers > 1}; no workers are created by default.
 #' The scalar engine remains available as a reference implementation. Pressure, surface
-#' albedo, globe diameter, and minimum wind speed are configurable. Solar
+#' albedo, globe diameter, minimum wind speed, and direct-radiation fraction
+#' are configurable. Solar
 #' positions use the supplied timestamp, latitude, longitude, and the equation
 #' of time. Radiation is zeroed when the computed
 #' solar elevation is not positive. When coordinates are row-aligned, solar
@@ -112,7 +116,8 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour) {
 #' solar terms for repeated instants.
 #' The function evaluates aligned instantaneous meteorological states; interval
 #' alignment, timestamp conversion, wind-height adjustment, and radiation
-#' preparation remain caller responsibilities.
+#' quality control remain caller responsibilities. When direct and diffuse
+#' radiation are available, supply their direct share with \code{direct_fraction}.
 #'
 #' \code{dates} must have the same length and row order as the meteorological input vectors.
 #' Root-location precision, residual validation, and dewpoint validation are
@@ -171,13 +176,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
                            dewpoint_tolerance = NULL, pressure = 1010,
                            surface_albedo = 0.45, globe_diameter = 0.0508,
                            min_wind_speed = 0.13, workers = 1L,
-                           solar_time = NULL){
-
-  
-  ##################################################
-  ##################################################
-  # Assumptions
-  propDirect <- 0.8  # Assume a proportion of direct radiation = direct/(diffuse + direct)
+                           solar_time = NULL, direct_fraction = 0.8){
   
   ##################################################
   ##################################################
@@ -227,7 +226,11 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   assertthat::assert_that(is.numeric(min_wind_speed) && length(min_wind_speed) == 1L &&
     is.finite(min_wind_speed) && min_wind_speed >= 0,
     msg="'min_wind_speed' must be one non-negative finite value")
-  assertthat::assert_that(propDirect < 1, msg="'propDirect' should be [0,1]")  
+  assertthat::assert_that(is.numeric(direct_fraction) &&
+    length(direct_fraction) %in% c(1L, ndates) &&
+    all(is.finite(direct_fraction) & direct_fraction >= 0 & direct_fraction <= 1),
+    msg="'direct_fraction' must be finite values from 0 through 1, supplied as one value or aligned with the meteorological inputs")
+  direct_fraction <- rep(direct_fraction, length.out = ndates)
   coordinates <- normalize_liljegren_coordinates(lon, lat, ndates)
   lon <- coordinates$lon
   lat <- coordinates$lat
@@ -240,14 +243,15 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   if (engine == "batch" && effective_workers > 1L) {
     parallel_result <- solve_liljegren_parallel(
       tas = tas, dewp = dewp, wind = wind, radiation = radiation,
-      zenith = zenith_rad, pressure = pressure, workers = effective_workers,
+      zenith = zenith_rad, pressure = pressure, direct_fraction = direct_fraction,
+      workers = effective_workers,
       diagnostics = diagnostics,
       controls = list(
         noNAs = noNAs, swap = swap,
         dewpoint_tolerance = dewpoint_tolerance, min_wind_speed = min_wind_speed,
         tolerance = tolerance, root_tolerance = root_tolerance,
         residual_tolerance = residual_tolerance, surface_albedo = surface_albedo,
-        globe_diameter = globe_diameter, prop_direct = propDirect
+        globe_diameter = globe_diameter
       )
     )
     wbgt.value <- parallel_result$data
@@ -333,7 +337,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
         min_wind_speed = MinWindSpeed, tolerance = tolerance,
         root_tolerance = root_tolerance, residual_tolerance = residual_tolerance,
         surface_albedo = surface_albedo, globe_diameter = globe_diameter,
-        prop_direct = propDirect
+        prop_direct = direct_fraction[valid_idx]
       )
       Tg.batch <- batch_result$Tg
       Tnwb.batch <- batch_result$Tnwb
@@ -345,12 +349,12 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
       Tnwb.failure.reason[valid_idx] <- attr(Tnwb.batch, "failure_reason")
     } else {
       Tg.solution <- lapply(valid_idx, function(i) suppressWarnings(fTg_solution(tas[i], relh[i], Pair[i],
-        wind[i], MinWindSpeed, radiation[i], propDirect, zenith_rad[i],
+        wind[i], MinWindSpeed, radiation[i], direct_fraction[i], zenith_rad[i],
         tolerance = tolerance, root_tolerance = root_tolerance,
         residual_tolerance = residual_tolerance, SurfAlbedo = surface_albedo,
         globe_diameter = globe_diameter)))
       Tnwb.solution <- lapply(valid_idx, function(i) suppressWarnings(fTnwb_solution(tas[i], dewp[i],
-        relh[i], Pair[i], wind[i], MinWindSpeed, radiation[i], propDirect,
+        relh[i], Pair[i], wind[i], MinWindSpeed, radiation[i], direct_fraction[i],
         zenith_rad[i], tolerance = tolerance, root_tolerance = root_tolerance,
         residual_tolerance = residual_tolerance, SurfAlbedo = surface_albedo)))
       Tg[valid_idx] <- vapply(Tg.solution, function(x) {

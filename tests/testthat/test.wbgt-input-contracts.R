@@ -34,6 +34,28 @@ test_that("wbgt.Liljegren rejects malformed wrapper controls", {
   expect_error(do.call(wbgt.Liljegren, invalid), "globe_diameter")
   invalid <- args; invalid$min_wind_speed <- -0.01
   expect_error(do.call(wbgt.Liljegren, invalid), "min_wind_speed")
+  invalid <- args; invalid$direct_fraction <- 1.1
+  expect_error(do.call(wbgt.Liljegren, invalid), "direct_fraction")
+  invalid <- args; invalid$direct_fraction <- c(0.2, 0.8)
+  expect_error(do.call(wbgt.Liljegren, invalid), "direct_fraction")
+})
+
+test_that("wbgt.Liljegren supports row-aligned direct fractions", {
+  args <- list(
+    tas = c(25, 30, 35), dewp = c(15, 20, 25), wind = c(0.2, 1, 2),
+    radiation = c(200, 600, 900),
+    dates = as.POSIXct("2024-06-01 10:00:00", tz = "UTC") + 0:2 * 3600,
+    lon = 0, lat = 20, hour = TRUE, direct_fraction = c(0.2, 0.5, 0.8)
+  )
+  scalar <- suppressWarnings(do.call(wbgt.Liljegren, c(args, list(engine = "scalar"))))
+  batch <- suppressWarnings(do.call(wbgt.Liljegren, c(args, list(engine = "batch"))))
+  for (component in c("data", "Tg", "Tnwb")) {
+    expect_identical(is.na(batch[[component]]), is.na(scalar[[component]]))
+    expect_equal(batch[[component]], scalar[[component]], tolerance = 1e-4)
+  }
+  default <- suppressWarnings(do.call(wbgt.Liljegren,
+    c(args[names(args) != "direct_fraction"], list(engine = "batch"))))
+  expect_false(isTRUE(all.equal(batch$data, default$data, tolerance = 1e-8)))
 })
 
 test_that("wbgt.Liljegren supports row-aligned pressure", {

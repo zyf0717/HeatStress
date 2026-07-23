@@ -26,7 +26,8 @@ wbgt.Liljegren(
   globe_diameter = 0.0508,
   min_wind_speed = 0.13,
   workers = 1L,
-  solar_time = NULL
+  solar_time = NULL,
+  direct_fraction = 0.8
 )
 }
 \arguments{
@@ -99,6 +100,10 @@ including humidity, then solves and assembles its local WBGT results.}
 \item{solar_time}{\code{"timestamp"} uses each full timestamp;
 \code{"date_noon"} evaluates each date at 12:00 UTC. \code{NULL} preserves
 the legacy \code{hour} behavior.}
+
+\item{direct_fraction}{proportion of supplied shortwave radiation treated as
+direct, `direct / (direct + diffuse)`. Supply one value or a vector aligned
+with the meteorological inputs; defaults to 0.8.}
 }
 \value{
 A list of:
@@ -123,7 +128,8 @@ fork and is not affiliated with the original project or its authors.
 The batch engine is the default implementation. It uses explicitly requested
 PSOCK workers when \code{workers > 1}; no workers are created by default.
 The scalar engine remains available as a reference implementation. Pressure, surface
-albedo, globe diameter, and minimum wind speed are configurable. Solar
+albedo, globe diameter, minimum wind speed, and direct-radiation fraction
+are configurable. Solar
 positions use the supplied timestamp, latitude, longitude, and the equation
 of time. Radiation is zeroed when the computed
 solar elevation is not positive. When coordinates are row-aligned, solar
@@ -131,7 +137,8 @@ geometry groups rows by longitude-latitude pair and reuses timestamp-only
 solar terms for repeated instants.
 The function evaluates aligned instantaneous meteorological states; interval
 alignment, timestamp conversion, wind-height adjustment, and radiation
-preparation remain caller responsibilities.
+quality control remain caller responsibilities. When direct and diffuse
+radiation are available, supply their direct share with \code{direct_fraction}.
 
 \code{dates} must have the same length and row order as the meteorological input vectors.
 Root-location precision, residual validation, and dewpoint validation are

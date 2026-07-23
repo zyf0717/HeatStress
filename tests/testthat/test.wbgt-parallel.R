@@ -116,6 +116,22 @@ test_that("parallel batch execution supports row-aligned coordinates", {
   expect_identical(parallel, sequential)
 })
 
+test_that("parallel batch execution supports row-aligned direct fractions", {
+  skip_if(HeatStressR:::max_liljegren_workers() < 2L,
+    "requires at least two logical CPUs")
+  x <- parallel_fixture()
+  run <- function(workers) suppressWarnings(wbgt.Liljegren(
+    x$tas, x$dewp, x$wind, x$radiation, x$dates,
+    lon = -5.66, lat = 40.96, hour = TRUE, engine = "batch", workers = workers,
+    diagnostics = TRUE, direct_fraction = c(0.1, 0.3, 0.5, 0.7, 0.9)
+  ))
+  sequential <- run(1L)
+  parallel <- run(2L)
+  parallel$diagnostics$workers <- 1L
+  parallel$diagnostics$requested_workers <- 1L
+  expect_identical(parallel, sequential)
+})
+
 test_that("parallel chunks reproduce row-local preprocessing", {
   skip_if(HeatStressR:::max_liljegren_workers() < 2L,
     "requires at least two logical CPUs")

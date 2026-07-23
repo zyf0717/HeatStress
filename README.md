@@ -74,6 +74,12 @@ temperature (`Tnwb`). The vectorized batch engine is the default; select
 the default is 1010 hPa. Other defaults are `surface_albedo = 0.45`,
 `globe_diameter = 0.0508`, and `min_wind_speed = 0.13`.
 
+`radiation` is total downwelling shortwave radiation. `direct_fraction`
+specifies the direct share, `direct / (direct + diffuse)`, and accepts one
+value or a row-aligned vector. It defaults to `0.8`; retain that default when
+only total shortwave radiation is available, or supply a measured or
+externally derived fraction when direct and diffuse radiation are known.
+
 Solar geometry uses latitude, longitude, and timestamp. Use UTC or
 timezone-aware `POSIXct` for high-throughput calculations. `POSIXlt`
 timestamps and ISO 8601 strings with an offset—for example,
@@ -98,8 +104,8 @@ meteorological pre-processing. The caller is responsible for:
 - choosing the representative instant for interval-mean or accumulated data;
 - converting timestamps to UTC or constructing timezone-aware `POSIXct`;
 - adjusting wind to the model reference height; and
-- partitioning, quality-controlling, and otherwise preparing supplied
-  shortwave radiation.
+- deriving and quality-controlling shortwave radiation from cloud cover or
+  other source data.
 
 The wrapper returns WBGT, globe temperature, and natural wet-bulb temperature;
 it does not expose the original C program's psychrometric wet-bulb or estimated
@@ -226,7 +232,7 @@ before calculation.
 | --- | --- | --- | --- |
 | Wind-height adjustment | Accepts scalar or row-aligned pressure; supplied wind is assumed to be at the reference height. | Can transform wind from another height using stability, temperature gradient, and urban/rural inputs. | Adjust non-reference-height wind externally before calling the wrapper. |
 | Solar geometry and time | Uses the supplied instant, timezone-aware timestamps, latitude, longitude, and equation of time. | Uses local standard time, GMT offset, input averaging period, and its own solar-position routine. | Convert local observations to UTC or provide timezone-aware timestamps; align interval data externally before calculation. |
-| Irradiance partitioning | Retains supplied daytime radiation and assumes direct fraction `0.8`. | Caps irradiance against top-of-atmosphere solar flux and derives direct fraction from normalized irradiance. | Cloudy, miscalibrated, and near-horizon forcing can produce different `Tg` and `Tnwb`. |
+| Irradiance partitioning | Retains supplied daytime radiation and accepts a scalar or row-aligned `direct_fraction` (default `0.8`). | Caps irradiance against top-of-atmosphere solar flux and derives direct fraction from normalized irradiance. | Cloudy, miscalibrated, and near-horizon forcing can produce different `Tg` and `Tnwb`; supply an externally derived fraction when available. |
 | Root solving and failures | Uses adaptive bracketing, residual validation, `NA` failures, preserved valid components, and optional diagnostics/batch fallback. | Uses damped fixed-point iteration (50-iteration limit, `0.02 K` convergence test) and reports `-9999` when a component fails. | Numerical behavior, failure boundaries, and error outputs deliberately differ. |
 | Output surface | Returns WBGT, `Tg`, and `Tnwb`. | Also returns psychrometric wet-bulb temperature and estimated wind speed. | The wrapper does not expose the full original-program output set. |
 
