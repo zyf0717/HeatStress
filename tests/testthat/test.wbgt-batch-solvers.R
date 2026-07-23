@@ -85,23 +85,23 @@ engine_fixture <- function() {
   )
 }
 
-test_that("Liljegren defaults to the corrected scalar engine", {
+test_that("Liljegren defaults to the batch engine", {
   x <- engine_fixture()
   default <- suppressWarnings(wbgt.Liljegren(x$tas, x$dewp, x$wind, x$radiation, x$dates,
     lon = -5.66, lat = 40.96, hour = TRUE, diagnostics = TRUE))
-  scalar <- suppressWarnings(wbgt.Liljegren(x$tas, x$dewp, x$wind, x$radiation, x$dates,
-    lon = -5.66, lat = 40.96, hour = TRUE, engine = "scalar"))
-  expect_equal(default$data, scalar$data, tolerance = 0)
-  expect_equal(default$Tg, scalar$Tg, tolerance = 0)
-  expect_equal(default$Tnwb, scalar$Tnwb, tolerance = 0)
-  expect_identical(default$diagnostics$engine, "scalar")
+  batch <- suppressWarnings(wbgt.Liljegren(x$tas, x$dewp, x$wind, x$radiation, x$dates,
+    lon = -5.66, lat = 40.96, hour = TRUE, engine = "batch"))
+  expect_equal(default$data, batch$data, tolerance = 0)
+  expect_equal(default$Tg, batch$Tg, tolerance = 0)
+  expect_equal(default$Tnwb, batch$Tnwb, tolerance = 0)
+  expect_identical(default$diagnostics$engine, "batch")
   expect_length(default$diagnostics$attempted, length(x$tas))
   expect_true(all(c("converged", "final_residual", "failure_reason") %in%
     names(default$diagnostics$Tg)))
-  expect_identical(names(scalar), c("data", "Tnwb", "Tg"))
+  expect_identical(names(batch), c("data", "Tnwb", "Tg"))
 })
 
-test_that("Liljegren batch engine is explicit and agrees with scalar", {
+test_that("Liljegren batch engine agrees with scalar", {
   x <- engine_fixture()
   batch <- suppressWarnings(wbgt.Liljegren(x$tas, x$dewp, x$wind, x$radiation, x$dates,
     lon = -5.66, lat = 40.96, hour = TRUE, engine = "batch", diagnostics = TRUE))
@@ -122,7 +122,7 @@ test_that("Liljegren groups solar geometry by row-aligned coordinates", {
     HeatStressR:::degToRad(calZenith(x$dates[i], lon[i], lat[i], hour = TRUE))
   }, numeric(1))
   actual_zenith <- HeatStressR:::calculate_liljegren_zenith(
-    x$dates, lon, lat, hour = TRUE, gmt_offset = NULL, averaging_period = 0
+    x$dates, lon, lat, hour = TRUE, averaging_period = 0
   )
   expect_equal(actual_zenith, expected_zenith, tolerance = 0)
 
@@ -150,19 +150,19 @@ test_that("Liljegren reuses timestamp solar terms across coordinate groups", {
   }, numeric(1))
 
   actual <- HeatStressR:::calculate_liljegren_zenith(
-    dates, lon, lat, hour = TRUE, gmt_offset = NULL, averaging_period = 0
+    dates, lon, lat, hour = TRUE, averaging_period = 0
   )
   expect_equal(actual, expected, tolerance = 0)
 
-  local_dates <- rep(c("2024-03-20 01:30:00", "2024-03-20 13:30:00"), 3)
-  expected_local <- vapply(seq_along(local_dates), function(i) {
-    HeatStressR:::degToRad(calZenith(local_dates[i], lon[i], lat[i], hour = TRUE,
-      gmt_offset = -5, averaging_period = 60))
+  interval_end_dates <- rep(c("2024-03-20 06:30:00", "2024-03-20 18:30:00"), 3)
+  expected_midpoint <- vapply(seq_along(interval_end_dates), function(i) {
+    HeatStressR:::degToRad(calZenith(interval_end_dates[i], lon[i], lat[i], hour = TRUE,
+      averaging_period = 60))
   }, numeric(1))
-  actual_local <- HeatStressR:::calculate_liljegren_zenith(
-    local_dates, lon, lat, hour = TRUE, gmt_offset = -5, averaging_period = 60
+  actual_midpoint <- HeatStressR:::calculate_liljegren_zenith(
+    interval_end_dates, lon, lat, hour = TRUE, averaging_period = 60
   )
-  expect_equal(actual_local, expected_local, tolerance = 0)
+  expect_equal(actual_midpoint, expected_midpoint, tolerance = 0)
 })
 
 test_that("diagnostics map batch solver rows to original inputs", {

@@ -34,26 +34,36 @@ indexShow()
 
 ## Calculate Liljegren WBGT
 
-`wbgt.Liljegren()` expects aligned vectors for air temperature (`tas`),
-dewpoint (`dewp`), wind speed (`wind`), radiation (`radiation`), and timestamp
-(`dates`). Longitude and latitude can each be a scalar or an aligned vector.
+`wbgt.Liljegren()` expects aligned vectors for air temperature (`tas`, °C),
+dewpoint (`dewp`, °C), wind speed (`wind`, m/s), solar shortwave radiation
+(`radiation`, W/m²), and timestamps (`dates`). Longitude (`lon`, degrees),
+latitude (`lat`, degrees), and atmospheric pressure (`pressure`, hPa) may each
+be a scalar or a vector aligned with the meteorological inputs.
 
 ```r
-# Default scalar R solver
+# Default vectorized batch solver
+# `dates` should be timezone-aware when solar_time = "timestamp".
+# `pressure_hpa` is measured atmospheric pressure in hPa.
 result <- wbgt.Liljegren(
-  tas, dewp, wind, radiation, dates, lon = lon, lat = lat
+  tas, dewp, wind, radiation, dates,
+  lon = lon, lat = lat,
+  pressure = pressure_hpa,
+  solar_time = "timestamp" # Use "date_noon" for legacy 12:00 UTC convention
 )
 
-# Explicit opt-in to the vectorized batch solver
-result_batch <- wbgt.Liljegren(
-  tas, dewp, wind, radiation, dates, lon = lon, lat = lat,
-  engine = "batch"
+# Explicit opt-in to the scalar reference solver
+result_scalar <- wbgt.Liljegren(
+  tas, dewp, wind, radiation, dates,
+  lon = lon, lat = lat,
+  pressure = pressure_hpa,
+  solar_time = "timestamp",
+  engine = "scalar"
 )
 ```
 
 The result contains WBGT, globe temperature (`Tg`), and natural wet-bulb
-temperature (`Tnwb`). The scalar engine is the default; select
-`engine = "batch"` when processing a sufficiently large aligned data set.
+temperature (`Tnwb`). The vectorized batch engine is the default; select
+`engine = "scalar"` for reference comparisons or debugging.
 
 ## Compatibility with HeatStress
 
@@ -62,6 +72,11 @@ and legacy argument order are retained relative to the pre-fork interface.
 Existing positional or named calls to `calZenith()`, `fTg()`, `fTnwb()`, and
 `wbgt.Liljegren()` remain accepted; fork-specific options are trailing
 optional arguments.
+
+The default Liljegren engine is now `"batch"`. Set `engine = "scalar"` to
+preserve the previous scalar execution path; batch and scalar results are
+numerically equivalent within the documented solver tolerance, not bitwise
+identical.
 
 Standard date strings and `POSIXct` inputs continue to work. Offset-aware ISO
 8601 timestamps are additionally supported. Input compatibility does not mean
@@ -80,12 +95,23 @@ the default is 1010 hPa. The C-aligned defaults are `surface_albedo = 0.45`,
 Solar geometry uses latitude, longitude, and timestamp. `POSIXct`/`POSIXlt`
 timestamps and ISO 8601 strings with an offset—for example,
 `2024-06-01T20:00:00+08:00` or `2024-06-01T12:00:00Z`—identify instants and
-are normalized to UTC when `hour = TRUE`.
+are normalized to UTC when `solar_time = "timestamp"`. For this recommended
+timestamp mode, provide timezone-aware datetimes or convert local observations
+to UTC before calling the function.
 
-For naive local-standard-time input, use `gmt_offset` (`LST - GMT`) and
-`averaging_period` in minutes to reproduce the original C timing convention:
-the solar position is evaluated at the interval midpoint. Do not combine
-`gmt_offset` with an offset-bearing ISO 8601 timestamp.
+`averaging_period` optionally recenters interval observations before computing
+solar position. It shifts each supplied timestamp backward by half the stated
+interval; leave it at its default of `0` for instantaneous observations:
+
+```r
+# A 60-minute observation timestamped at 12:30 UTC is evaluated at 12:00 UTC.
+result <- wbgt.Liljegren(
+  tas, dewp, wind, radiation, utc_dates,
+  lon = lon, lat = lat, pressure = pressure_hpa,
+  solar_time = "timestamp",
+  averaging_period = 60  # measurement interval, in minutes
+)
+```
 
 Inputs are deliberately validated before solving:
 
@@ -94,8 +120,10 @@ Inputs are deliberately validated before solving:
 - `lon` and `lat` must be finite geographic coordinates, supplied as scalars
   or row-aligned vectors; repeated coordinate pairs share one solar-geometry
   calculation;
-- `hour`, `noNAs`, `swap`, and `diagnostics` must be single, non-missing
-  logical values; and
+- `solar_time` selects either full timestamps (`"timestamp"`) or the legacy
+  12:00 UTC date convention (`"date_noon"`); `hour` is retained as a legacy
+  alias; `noNAs`, `swap`, and `diagnostics` must be single, non-missing logical
+  values; and
 - tolerance controls and physical parameters must be finite and within their
   documented domains.
 
@@ -164,7 +192,7 @@ results <- foreach::foreach(
 ) %dopar% {
   wbgt.Liljegren(
     shard$tas, shard$dewp, shard$wind, shard$radiation, shard$dates,
-    lon = shard$lon, lat = shard$lat, hour = TRUE,
+    lon = shard$lon, lat = shard$lat, solar_time = "timestamp",
     engine = "batch", workers = 1L
   )
 }
@@ -181,8 +209,9 @@ loads it in the example above.
 `calZenith()` processes date vectors in one pass.
 `wbgt.Liljegren()` precomputes aligned zenith angles by coordinate pair and
 reuses timestamp-only solar terms for repeated instants. The batch engine
-remains an explicit opt-in because numerical solvers dominate the end-to-end
-cost and worker startup is material for small inputs.
+is the default because it vectorizes the dominant numerical solves. It remains
+single-process unless `workers > 1`; PSOCK startup can still outweigh the
+benefit of additional workers for small inputs.
 
 The 2.1.2 timestamp-cache E2E benchmark used a 192-location, 129,024-row
 hourly fixture with three repetitions on macOS arm64, R 4.6.1:

@@ -11,15 +11,14 @@ normalize_liljegren_coordinates <- function(lon, lat, n) {
   list(lon = rep(lon, length.out = n), lat = rep(lat, length.out = n))
 }
 
-calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
-                                       averaging_period) {
+calculate_liljegren_zenith <- function(dates, lon, lat, hour, averaging_period) {
   n <- length(dates)
   coordinates <- normalize_liljegren_coordinates(lon, lat, n)
   date_key <- if (inherits(dates, "POSIXt")) as.numeric(dates) else as.character(dates)
   unique_date_index <- !duplicated(date_key)
   date_index <- match(date_key, date_key[unique_date_index])
   terms <- calculate_solar_time_terms(
-    dates[unique_date_index], hour, gmt_offset, averaging_period
+    dates[unique_date_index], hour, averaging_period
   )
   coordinate_id <- paste(sprintf("%a", coordinates$lon),
     sprintf("%a", coordinates$lat), sep = "\r")
@@ -46,8 +45,8 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 #' @param wind vector of wind speed in m/s.
 #' @param radiation vector of solar shortwave downwelling radiation in W/m2.
 #' @param dates vector of dates, \code{POSIXct}/\code{POSIXlt} instants, or ISO 8601
-#' datetime strings. With \code{hour = TRUE}, offset-bearing ISO 8601 strings are
-#' normalized to UTC.
+#' datetime strings. With \code{solar_time = "timestamp"}, offset-bearing ISO
+#' 8601 strings are normalized to UTC.
 #' Values must have the same length and row order as the meteorological input
 #' vectors.
 #' @param lon numeric longitude in degrees. Supply one value for a fixed
@@ -59,11 +58,10 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 #' acceptance \code{tolerance}, and dewpoint validation \code{tolerance}.
 #' @param noNAs logical, should NAs be introduced when dewp>tas? If TRUE specify how to deal in those cases (swap argument)
 #' @param swap logical, should \code{tas >= dewp} be enforced by swapping? Otherwise, dewp is set to tas. This argument is needed when noNAs=T.
-#' @param hour logical. If TRUE, calculate from the full UTC timestamp. Default:
-#' FALSE (12:00 UTC is used for date-only inputs).
-#' @param engine Numerical solver engine. \code{"scalar"} is the default R
-#' implementation. \code{"batch"} uses the experimental vectorized safeguarded
-#' root solver with automatic scalar fallback for unresolved rows.
+#' @param hour legacy logical solar-time selector. Use \code{solar_time} in new code.
+#' @param engine Numerical solver engine. \code{"batch"} is the default
+#' vectorized safeguarded root solver with automatic scalar fallback for
+#' unresolved rows. \code{"scalar"} selects the reference R implementation.
 #' @param diagnostics logical; return solver metadata in addition to the usual result.
 #' @param workers number of PSOCK worker processes for \code{engine = "batch"}.
 #' Must be an integer from 1 through the currently permitted logical CPU count.
@@ -86,12 +84,11 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 #' matching the original Liljegren C implementation.
 #' @param min_wind_speed lower bound applied to wind speed in m/s. Defaults to
 #' 0.13 m/s, matching the original Liljegren C implementation.
-#' @param gmt_offset optional local-standard-time offset from GMT, in hours
-#' (\code{LST - GMT}). Use only when \code{dates} contains local standard clock times;
-#' timezone-aware timestamps and ISO 8601 offset strings are normalized to UTC
-#' automatically. Do not combine it with an offset-bearing ISO 8601 string.
 #' @param averaging_period averaging interval in minutes. Solar position is
 #' evaluated at its midpoint; defaults to 0.
+#' @param solar_time \code{"timestamp"} uses each full timestamp;
+#' \code{"date_noon"} evaluates each date at 12:00 UTC. \code{NULL} preserves
+#' the legacy \code{hour} behavior.
 #' @importFrom stats optimize
 #' 
 #' @return A list of:
@@ -107,9 +104,9 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 #' translated to R by Ana Casanueva. HeatStressR is an independently maintained
 #' fork and is not affiliated with the original project or its authors.
 #'
-#' The scalar engine is the default R implementation. The experimental batch
-#' engine is opt-in and uses explicitly requested PSOCK workers when
-#' \code{workers > 1}; no workers are created by default. Pressure, surface
+#' The batch engine is the default implementation. It uses explicitly requested
+#' PSOCK workers when \code{workers > 1}; no workers are created by default.
+#' The scalar engine remains available as a reference implementation. Pressure, surface
 #' albedo, globe diameter, and minimum wind speed are configurable. Solar
 #' positions use timestamp, latitude, longitude, and the documented
 #' local-standard-time midpoint controls. Radiation is zeroed when the computed
@@ -152,14 +149,16 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 #' )
 #' result <- wbgt.Liljegren(
 #'   tas = c(30, 31), dewp = c(22, 22.5), wind = c(1.5, 2),
-#'   radiation = c(700, 750), dates = times, lon = 0, lat = 15, hour = TRUE
+#'   radiation = c(700, 750), dates = times, lon = 0, lat = 15,
+#'   solar_time = "timestamp"
 #' )
 #' result$data
 #'
 #' \dontrun{
 #' result_parallel <- wbgt.Liljegren(
 #'   tas = c(30, 31), dewp = c(22, 22.5), wind = c(1.5, 2),
-#'   radiation = c(700, 750), dates = times, lon = 0, lat = 15, hour = TRUE,
+#'   radiation = c(700, 750), dates = times, lon = 0, lat = 15,
+#'   solar_time = "timestamp",
 #'   engine = "batch", workers = 2
 #' )
 #' result_parallel$data
@@ -167,12 +166,13 @@ calculate_liljegren_zenith <- function(dates, lon, lat, hour, gmt_offset,
 
 wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, tolerance=1e-4, 
                            noNAs=TRUE, swap=FALSE, hour=FALSE,
-                           engine = c("scalar", "batch"), diagnostics = FALSE,
+                           engine = c("batch", "scalar"), diagnostics = FALSE,
                            root_tolerance = NULL, residual_tolerance = NULL,
                            dewpoint_tolerance = NULL, pressure = 1010,
                            surface_albedo = 0.45, globe_diameter = 0.0508,
-                           min_wind_speed = 0.13, gmt_offset = NULL,
-                           averaging_period = 0, workers = 1L){
+                           min_wind_speed = 0.13, averaging_period = 0,
+                           workers = 1L,
+                           solar_time = NULL){
 
   
   ##################################################
@@ -183,6 +183,8 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   ##################################################
   ##################################################
   # Assertion statements
+  hour_supplied <- !missing(hour)
+  hour <- resolve_solar_time(hour, solar_time, hour_supplied)
   assertthat::assert_that(is.logical(hour) && length(hour) == 1 && !is.na(hour),
     msg="'hour' should be a single logical value")
   assertthat::assert_that(is.logical(noNAs) && length(noNAs) == 1 && !is.na(noNAs),
@@ -233,7 +235,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   # Solar geometry depends only on aligned timestamps and coordinates. Reuse
   # timestamp-only terms and calculate each coordinate group before solving.
   zenith_rad <- calculate_liljegren_zenith(dates, lon, lat, hour = hour,
-    gmt_offset = gmt_offset, averaging_period = averaging_period)
+    averaging_period = averaging_period)
   
   ######################
   ######################
