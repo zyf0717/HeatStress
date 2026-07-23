@@ -27,6 +27,30 @@ test_that("batch solvers report residual-backed diagnostics", {
   }
 })
 
+test_that("batch solvers expose compact results without row-level diagnostics", {
+  x <- batch_fixture()
+  full <- list(
+    Tg = HeatStressR:::fTg_batch(x$tas, x$relh, 1010, x$wind, 0.1,
+      x$radiation, 0.8, x$zenith),
+    Tnwb = HeatStressR:::fTnwb_batch(x$tas, x$dewp, x$relh, 1010, x$wind,
+      0.1, x$radiation, 0.8, x$zenith)
+  )
+  compact <- list(
+    Tg = HeatStressR:::fTg_batch(x$tas, x$relh, 1010, x$wind, 0.1,
+      x$radiation, 0.8, x$zenith, collect_diagnostics = FALSE),
+    Tnwb = HeatStressR:::fTnwb_batch(x$tas, x$dewp, x$relh, 1010, x$wind,
+      0.1, x$radiation, 0.8, x$zenith, collect_diagnostics = FALSE)
+  )
+
+  for (component in names(compact)) {
+    expect_named(compact[[component]], c("value", "converged", "failure_reason"))
+    expect_equal(compact[[component]]$value, as.numeric(full[[component]]), tolerance = 1e-4)
+    expect_identical(compact[[component]]$converged, attr(full[[component]], "converged"))
+    expect_identical(compact[[component]]$failure_reason,
+      attr(full[[component]], "failure_reason"))
+  }
+})
+
 test_that("solver validation rejects finite residual-invalid values", {
   expect_false(HeatStressR:::valid_solver_result(300, 2e-4, 1e-4))
   expect_false(HeatStressR:::valid_solver_result(NA_real_, 0, 1e-4))

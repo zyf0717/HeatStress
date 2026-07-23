@@ -4,22 +4,23 @@ fTg_batch <- function(tas, relh, Pair, wind, min.speed, radiation, propDirect,
                       root_solver = vector_uniroot, scalar_solver = fTg_solution,
                       root_tolerance = tolerance * 0.01,
                       residual_tolerance = tolerance,
-                      globe_diameter = 0.0508) {
+                      globe_diameter = 0.0508, collect_diagnostics = TRUE,
+                      forcing_normalized = FALSE) {
   n <- length(tas)
   if (!all(vapply(list(relh, wind, radiation, zenith), length, integer(1)) == n) ||
     !all(vapply(list(Pair, globe_diameter), length, integer(1)) %in% c(1L, n)))
     stop("fTg_batch inputs must have the same length")
-  Pair <- rep(Pair, length.out = n)
-  propDirect <- rep(propDirect, length.out = n)
-  SurfAlbedo <- rep(SurfAlbedo, length.out = n)
-  globe_diameter <- rep(globe_diameter, length.out = n)
+  Pair <- recycle_liljegren_input(Pair, n)
+  propDirect <- recycle_liljegren_input(propDirect, n)
+  SurfAlbedo <- recycle_liljegren_input(SurfAlbedo, n)
+  globe_diameter <- recycle_liljegren_input(globe_diameter, n)
   emis.globe <- 0.95
   alb.globe <- 0.05
-  zenith[zenith <= 0] <- 1e-10
-  zenith[radiation > 0 & zenith > 1.57] <- 1.57
-  zenith[radiation > 15 & zenith > 1.54] <- 1.54
-  zenith[radiation > 900 & zenith > 1.52] <- 1.52
-  radiation[radiation < 10 & zenith == 1.57] <- 0
+  if (!forcing_normalized) {
+    forcing <- normalize_liljegren_forcing(radiation, zenith)
+    radiation <- forcing$radiation
+    zenith <- forcing$zenith
+  }
   Tair <- tas + 273.15
   wind <- pmax(wind, min.speed)
   longwave <- 0.5 * (emis_atm(Tair, relh * 0.01) * Tair ^ 4 + 0.999 * Tair ^ 4)
@@ -36,17 +37,20 @@ fTg_batch <- function(tas, relh, Pair, wind, min.speed, radiation, propDirect,
     globe_diameter, emis.globe)
   batch.valid <- valid_solver_result(globe, batch.residual, residual_tolerance)
   failure.reason <- solve$failure_reason
-  fallback.reason <- failure.reason
+  if (collect_diagnostics) fallback.reason <- failure.reason
   residual.invalid <- solve$converged & !batch.valid
   failure.reason[residual.invalid & failure.reason == "none"] <- "residual_validation"
-  fallback.reason[residual.invalid & fallback.reason == "none"] <- "residual_validation"
+  if (collect_diagnostics)
+    fallback.reason[residual.invalid & fallback.reason == "none"] <- "residual_validation"
   unresolved <- which(!solve$converged | !batch.valid)
-  fallback.evaluations <- integer(n)
-  fallback.converged <- rep(NA, n)
-  final.lower <- solve$lower
-  final.upper <- solve$upper
-  final.lower.residual <- solve$lower_residual
-  final.upper.residual <- solve$upper_residual
+  if (collect_diagnostics) {
+    fallback.evaluations <- integer(n)
+    fallback.converged <- rep(NA, n)
+    final.lower <- solve$lower
+    final.upper <- solve$upper
+    final.lower.residual <- solve$lower_residual
+    final.upper.residual <- solve$upper_residual
+  }
   if (length(unresolved)) {
     fallback <- lapply(unresolved, function(i) suppressWarnings(scalar_solver(
       tas[i], relh[i], Pair[i], wind[i], min.speed, radiation[i], propDirect[i],
@@ -54,8 +58,7 @@ fTg_batch <- function(tas, relh, Pair, wind, min.speed, radiation, propDirect,
       root_tolerance = root_tolerance, residual_tolerance = residual_tolerance,
       globe_diameter = globe_diameter[i]
     )))
-    fallback.converged[unresolved] <- vapply(fallback, `[[`, logical(1), "converged")
-    fallback.evaluations[unresolved] <- vapply(fallback, `[[`, integer(1), "evaluations")
+    fallback.converged.values <- vapply(fallback, `[[`, logical(1), "converged")
     globe[unresolved] <- vapply(fallback, function(x) {
       if (x$converged) x$root + 273.15 else NA_real_
     }, numeric(1))
@@ -63,24 +66,31 @@ fTg_batch <- function(tas, relh, Pair, wind, min.speed, radiation, propDirect,
       if (is.null(x$failure_reason)) "scalar_fallback_failed" else x$failure_reason
     }, character(1))
     failure.reason[unresolved] <- scalar.reason
-    fallback.reason[unresolved[!fallback.converged[unresolved]]] <- "scalar_fallback_failed"
-    extract_numeric <- function(name) vapply(fallback, function(x) {
-      if (is.null(x[[name]])) NA_real_ else x[[name]]
-    }, numeric(1))
-    final.lower[unresolved] <- extract_numeric("final_lower")
-    final.upper[unresolved] <- extract_numeric("final_upper")
-    final.lower.residual[unresolved] <- extract_numeric("lower_residual")
-    final.upper.residual[unresolved] <- extract_numeric("upper_residual")
+    if (collect_diagnostics) {
+      fallback.converged[unresolved] <- fallback.converged.values
+      fallback.evaluations[unresolved] <- vapply(fallback, `[[`, integer(1), "evaluations")
+      fallback.reason[unresolved[!fallback.converged.values]] <- "scalar_fallback_failed"
+      extract_numeric <- function(name) vapply(fallback, function(x) {
+        if (is.null(x[[name]])) NA_real_ else x[[name]]
+      }, numeric(1))
+      final.lower[unresolved] <- extract_numeric("final_lower")
+      final.upper[unresolved] <- extract_numeric("final_upper")
+      final.lower.residual[unresolved] <- extract_numeric("lower_residual")
+      final.upper.residual[unresolved] <- extract_numeric("upper_residual")
+    }
   }
   final.residual <- fTg_residual(globe, Tair, Pair, wind, longwave, solar,
     globe_diameter, emis.globe)
   final.valid <- valid_solver_result(globe, final.residual, residual_tolerance)
-  candidate.root <- globe - 273.15
+  if (collect_diagnostics) candidate.root <- globe - 273.15
   failure.reason[final.valid] <- "none"
   failure.reason[!final.valid & failure.reason == "none"] <- "residual_validation"
   globe[!final.valid] <- NA_real_
   converged <- final.valid
   result <- globe - 273.15
+  if (!collect_diagnostics) {
+    return(list(value = result, converged = converged, failure_reason = failure.reason))
+  }
   attr(result, "batch_iterations") <- solve$iterations
   attr(result, "batch_evaluations") <- solve$evaluations
   attr(result, "bracket_evaluations") <- solve$evaluations - solve$iterations

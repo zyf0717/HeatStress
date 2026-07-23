@@ -33,7 +33,23 @@ split_liljegren_chunks <- function(n, workers) {
   })
 }
 
-solve_liljegren_batch_chunk <- function(chunk, controls) {
+recycle_liljegren_input <- function(x, n) {
+  if (length(x) == n) x else rep(x, length.out = n)
+}
+
+normalize_liljegren_forcing <- function(radiation, zenith) {
+  zenith[zenith <= 0] <- 1e-10
+  zenith[radiation > 0 & zenith > 1.57] <- 1.57
+  zenith[radiation > 15 & zenith > 1.54] <- 1.54
+  zenith[radiation > 900 & zenith > 1.52] <- 1.52
+  radiation[radiation < 10 & zenith == 1.57] <- 0
+  list(radiation = radiation, zenith = zenith)
+}
+
+solve_liljegren_batch_chunk <- function(chunk, controls, collect_diagnostics = TRUE) {
+  forcing <- normalize_liljegren_forcing(chunk$radiation, chunk$zenith)
+  chunk$radiation <- forcing$radiation
+  chunk$zenith <- forcing$zenith
   list(
     Tg = fTg_batch(
       chunk$tas, chunk$relh, chunk$Pair, chunk$wind,
@@ -42,7 +58,8 @@ solve_liljegren_batch_chunk <- function(chunk, controls) {
       root_tolerance = controls$root_tolerance,
       residual_tolerance = controls$residual_tolerance,
       SurfAlbedo = controls$surface_albedo,
-      globe_diameter = controls$globe_diameter
+      globe_diameter = controls$globe_diameter,
+      collect_diagnostics = collect_diagnostics, forcing_normalized = TRUE
     ),
     Tnwb = fTnwb_batch(
       chunk$tas, chunk$dewp, chunk$relh, chunk$Pair, chunk$wind,
@@ -50,7 +67,8 @@ solve_liljegren_batch_chunk <- function(chunk, controls) {
       chunk$zenith, tolerance = controls$tolerance,
       root_tolerance = controls$root_tolerance,
       residual_tolerance = controls$residual_tolerance,
-      SurfAlbedo = controls$surface_albedo
+      SurfAlbedo = controls$surface_albedo,
+      collect_diagnostics = collect_diagnostics, forcing_normalized = TRUE
     )
   )
 }
@@ -94,7 +112,7 @@ combine_batch_solver_results <- function(results) {
 solve_liljegren_batch <- function(tas, dewp, relh, Pair, wind, radiation, zenith,
                                   min_wind_speed, tolerance, root_tolerance,
                                   residual_tolerance, surface_albedo, globe_diameter,
-                                  prop_direct = 0.8) {
+                                  prop_direct = 0.8, collect_diagnostics = TRUE) {
   n <- length(tas)
   if (!all(vapply(list(dewp, relh, Pair, wind, radiation, zenith), length,
     integer(1)) == n)) {
@@ -109,12 +127,14 @@ solve_liljegren_batch <- function(tas, dewp, relh, Pair, wind, radiation, zenith
   payload <- list(tas = tas, dewp = dewp, relh = relh, Pair = Pair, wind = wind,
     radiation = radiation, zenith = zenith)
 
-  solve_liljegren_batch_chunk(payload, controls)
+  solve_liljegren_batch_chunk(payload, controls, collect_diagnostics)
 }
 
 solve_liljegren_batch_raw_chunk <- function(chunk, controls) {
   n <- length(chunk$tas)
-  Pair <- rep(chunk$pressure, length.out = n)
+  collect_diagnostics <- if (is.null(controls$collect_diagnostics)) TRUE else
+    controls$collect_diagnostics
+  Pair <- recycle_liljegren_input(chunk$pressure, n)
   tas <- chunk$tas
   dewp <- chunk$dewp
   wind <- chunk$wind
@@ -123,15 +143,17 @@ solve_liljegren_batch_raw_chunk <- function(chunk, controls) {
 
   radiation[radiation < 0] <- 0
   wind[wind < 0] <- 0
-  solar_geometry_mismatch <- !is.na(radiation) & !is.na(zenith) &
-    radiation > 15 & zenith > 1.54
+  solar_geometry_mismatch <- if (collect_diagnostics) !is.na(radiation) & !is.na(zenith) &
+    radiation > 15 & zenith > 1.54 else NULL
   radiation[!is.na(zenith) & cos(zenith) <= 0] <- 0
 
   input_valid <- !is.na(tas + dewp + wind + radiation + Pair) & !is.na(zenith)
-  input_status <- rep("attempted", n)
-  input_status[is.na(tas) | is.na(dewp) | is.na(wind) | is.na(radiation) | is.na(Pair)] <-
-    "missing_input"
-  input_status[input_status == "attempted" & is.na(zenith)] <- "missing_date"
+  if (collect_diagnostics) {
+    input_status <- rep("attempted", n)
+    input_status[is.na(tas) | is.na(dewp) | is.na(wind) | is.na(radiation) | is.na(Pair)] <-
+      "missing_input"
+    input_status[input_status == "attempted" & is.na(zenith)] <- "missing_date"
+  }
 
   if (controls$noNAs && controls$swap) {
     tas_tmp <- pmax(tas, dewp)
@@ -142,8 +164,10 @@ solve_liljegren_batch_raw_chunk <- function(chunk, controls) {
       tas[(dewp - tas) > controls$dewpoint_tolerance]
   } else {
     input_valid <- input_valid & tas >= dewp
-    input_status[input_status == "attempted" & !is.na(tas) & !is.na(dewp) &
-      dewp > tas] <- "invalid_dewpoint"
+    if (collect_diagnostics) {
+      input_status[input_status == "attempted" & !is.na(tas) & !is.na(dewp) &
+        dewp > tas] <- "invalid_dewpoint"
+    }
   }
   relh <- dewp2hurs(tas, dewp)
   valid_idx <- which(input_valid)
@@ -151,31 +175,68 @@ solve_liljegren_batch_raw_chunk <- function(chunk, controls) {
   Tnwb <- rep(NA_real_, n)
   Tg.batch <- NULL
   Tnwb.batch <- NULL
+  failure_summary <- NULL
   if (length(valid_idx)) {
     chunk_controls <- controls
-    chunk_controls$prop_direct <- chunk$direct_fraction[valid_idx]
-    solved <- solve_liljegren_batch_chunk(list(
-      tas = tas[valid_idx], dewp = dewp[valid_idx], relh = relh[valid_idx],
-      Pair = Pair[valid_idx], wind = wind[valid_idx], radiation = radiation[valid_idx],
-      zenith = zenith[valid_idx]
-    ), chunk_controls)
+    payload <- if (length(valid_idx) == n) {
+      chunk_controls$prop_direct <- chunk$direct_fraction
+      list(tas = tas, dewp = dewp, relh = relh, Pair = Pair, wind = wind,
+        radiation = radiation, zenith = zenith)
+    } else {
+      chunk_controls$prop_direct <- chunk$direct_fraction[valid_idx]
+      list(
+        tas = tas[valid_idx], dewp = dewp[valid_idx], relh = relh[valid_idx],
+        Pair = Pair[valid_idx], wind = wind[valid_idx], radiation = radiation[valid_idx],
+        zenith = zenith[valid_idx]
+      )
+    }
+    solved <- solve_liljegren_batch_chunk(payload, chunk_controls, collect_diagnostics)
     Tg.batch <- solved$Tg
     Tnwb.batch <- solved$Tnwb
-    Tg[valid_idx] <- Tg.batch
-    Tnwb[valid_idx] <- Tnwb.batch
+    if (collect_diagnostics) {
+      Tg[valid_idx] <- Tg.batch
+      Tnwb[valid_idx] <- Tnwb.batch
+    } else {
+      Tg[valid_idx] <- Tg.batch$value
+      Tnwb[valid_idx] <- Tnwb.batch$value
+      failure_summary <- summarize_liljegren_compact_failures(Tg.batch, Tnwb.batch)
+    }
+  }
+  if (!collect_diagnostics && !length(valid_idx)) {
+    failure_summary <- summarize_liljegren_compact_failures(NULL, NULL)
   }
   list(
     n = n, data = ifelse(is.na(Tg) | is.na(Tnwb), NA_real_,
       0.7 * Tnwb + 0.2 * Tg + 0.1 * tas), Tg = Tg, Tnwb = Tnwb,
-    input_valid = input_valid,
-    input_status = input_status, solar_geometry_mismatch = solar_geometry_mismatch,
-    valid_idx = valid_idx, Tg.batch = Tg.batch, Tnwb.batch = Tnwb.batch
+    input_valid = if (collect_diagnostics) input_valid else NULL,
+    input_status = if (collect_diagnostics) input_status else NULL,
+    solar_geometry_mismatch = solar_geometry_mismatch,
+    valid_idx = if (collect_diagnostics) valid_idx else NULL,
+    Tg.batch = Tg.batch, Tnwb.batch = Tnwb.batch,
+    failure_summary = failure_summary
   )
 }
 
 liljegren_failure_count_names <- c(
   "unbracketed", "non_finite", "residual_validation"
 )
+
+summarize_liljegren_compact_failures <- function(Tg, Tnwb) {
+  empty_counts <- stats::setNames(integer(length(liljegren_failure_count_names)),
+    liljegren_failure_count_names)
+  summarize_component <- function(result) {
+    if (is.null(result)) return(empty_counts)
+    stats::setNames(as.integer(table(factor(result$failure_reason[!result$converged],
+      levels = liljegren_failure_count_names))), liljegren_failure_count_names)
+  }
+  tg_converged <- if (is.null(Tg)) logical() else Tg$converged
+  tnwb_converged <- if (is.null(Tnwb)) logical() else Tnwb$converged
+  list(
+    attempted_rows = length(tg_converged),
+    failed_rows = sum(!tg_converged | !tnwb_converged),
+    Tg = summarize_component(Tg), Tnwb = summarize_component(Tnwb)
+  )
+}
 
 summarize_liljegren_chunk_failures <- function(result) {
   empty_counts <- stats::setNames(integer(length(liljegren_failure_count_names)),
@@ -213,7 +274,11 @@ compact_liljegren_chunk_result <- function(result) {
     data = result$data,
     Tg = result$Tg,
     Tnwb = result$Tnwb,
-    failure_summary = summarize_liljegren_chunk_failures(result)
+    failure_summary = if (is.null(result$failure_summary)) {
+      summarize_liljegren_chunk_failures(result)
+    } else {
+      result$failure_summary
+    }
   )
 }
 
@@ -283,6 +348,7 @@ solve_liljegren_parallel <- function(tas, dewp, wind, radiation, zenith,
     if (diagnostics) result else
       utils::getFromNamespace("compact_liljegren_chunk_result", "HeatStressR")(result)
   }
+  controls$collect_diagnostics <- diagnostics
   chunk_results <- parallel::parLapply(cluster, chunks, worker, controls = controls,
     diagnostics = diagnostics)
   if (!diagnostics) {

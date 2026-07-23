@@ -291,7 +291,7 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
       parallel_failure_summary <- parallel_result$failure_summary
     }
   } else {
-  Pair <- rep(pressure, length.out = ndates)
+  Pair <- recycle_liljegren_input(pressure, ndates)
   MinWindSpeed <- min_wind_speed
   Tnwb <- rep(NA_real_, ndates)
   Tg <- rep(NA_real_, ndates)
@@ -332,33 +332,52 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
   # *** Calculation of the Tg and Tnwb ***
   # **************************************
   valid_idx <- which(xmask)
-  Tg.converged <- rep(NA, ndates)
-  Tnwb.converged <- rep(NA, ndates)
-  Tg.evaluations <- rep(NA_integer_, ndates)
-  Tnwb.evaluations <- rep(NA_integer_, ndates)
-  Tg.final.residual <- rep(NA_real_, ndates)
-  Tnwb.final.residual <- rep(NA_real_, ndates)
-  Tg.failure.reason <- rep("not_attempted", ndates)
-  Tnwb.failure.reason <- rep("not_attempted", ndates)
+  needs_row_state <- diagnostics || engine != "batch"
+  if (needs_row_state) {
+    Tg.converged <- rep(NA, ndates)
+    Tnwb.converged <- rep(NA, ndates)
+    Tg.evaluations <- rep(NA_integer_, ndates)
+    Tnwb.evaluations <- rep(NA_integer_, ndates)
+    Tg.final.residual <- rep(NA_real_, ndates)
+    Tnwb.final.residual <- rep(NA_real_, ndates)
+    Tg.failure.reason <- rep("not_attempted", ndates)
+    Tnwb.failure.reason <- rep("not_attempted", ndates)
+  }
   if (length(valid_idx)) {
     if (engine == "batch") {
+      solver_input <- if (length(valid_idx) == ndates) {
+        list(tas = tas, dewp = dewp, relh = relh, Pair = Pair, wind = wind,
+          radiation = radiation, zenith = zenith_rad, prop_direct = direct_fraction)
+      } else {
+        list(
+          tas = tas[valid_idx], dewp = dewp[valid_idx], relh = relh[valid_idx],
+          Pair = Pair[valid_idx], wind = wind[valid_idx], radiation = radiation[valid_idx],
+          zenith = zenith_rad[valid_idx], prop_direct = direct_fraction[valid_idx]
+        )
+      }
       batch_result <- solve_liljegren_batch(
-        tas = tas[valid_idx], dewp = dewp[valid_idx], relh = relh[valid_idx],
-        Pair = Pair[valid_idx], wind = wind[valid_idx], radiation = radiation[valid_idx],
-        zenith = zenith_rad[valid_idx],
+        tas = solver_input$tas, dewp = solver_input$dewp, relh = solver_input$relh,
+        Pair = solver_input$Pair, wind = solver_input$wind, radiation = solver_input$radiation,
+        zenith = solver_input$zenith,
         min_wind_speed = MinWindSpeed, tolerance = tolerance,
         root_tolerance = root_tolerance, residual_tolerance = residual_tolerance,
         surface_albedo = surface_albedo, globe_diameter = globe_diameter,
-        prop_direct = direct_fraction[valid_idx]
+        prop_direct = solver_input$prop_direct, collect_diagnostics = diagnostics
       )
       Tg.batch <- batch_result$Tg
       Tnwb.batch <- batch_result$Tnwb
-      Tg[valid_idx] <- Tg.batch
-      Tnwb[valid_idx] <- Tnwb.batch
-      Tg.converged[valid_idx] <- attr(Tg.batch, "converged")
-      Tnwb.converged[valid_idx] <- attr(Tnwb.batch, "converged")
-      Tg.failure.reason[valid_idx] <- attr(Tg.batch, "failure_reason")
-      Tnwb.failure.reason[valid_idx] <- attr(Tnwb.batch, "failure_reason")
+      if (diagnostics) {
+        Tg[valid_idx] <- Tg.batch
+        Tnwb[valid_idx] <- Tnwb.batch
+        Tg.converged[valid_idx] <- attr(Tg.batch, "converged")
+        Tnwb.converged[valid_idx] <- attr(Tnwb.batch, "converged")
+        Tg.failure.reason[valid_idx] <- attr(Tg.batch, "failure_reason")
+        Tnwb.failure.reason[valid_idx] <- attr(Tnwb.batch, "failure_reason")
+      } else {
+        Tg[valid_idx] <- Tg.batch$value
+        Tnwb[valid_idx] <- Tnwb.batch$value
+        parallel_failure_summary <- summarize_liljegren_compact_failures(Tg.batch, Tnwb.batch)
+      }
     } else {
       Tg.solution <- lapply(valid_idx, function(i) suppressWarnings(fTg_solution(tas[i], relh[i], Pair[i],
         wind[i], MinWindSpeed, radiation[i], direct_fraction[i], zenith_rad[i],
@@ -384,6 +403,9 @@ wbgt.Liljegren <- function(tas, dewp, wind, radiation, dates, lon, lat, toleranc
       Tg.final.residual[valid_idx] <- vapply(Tg.solution, `[[`, numeric(1), "residual")
       Tnwb.final.residual[valid_idx] <- vapply(Tnwb.solution, `[[`, numeric(1), "residual")
     }
+  }
+  if (engine == "batch" && !diagnostics && !length(valid_idx)) {
+    parallel_failure_summary <- summarize_liljegren_compact_failures(NULL, NULL)
   }
   }
   if (is.null(parallel_failure_summary)) {
