@@ -15,14 +15,14 @@ files by row count.
 
 ```sh
 BENCHMARK_ROOT=$PWD BENCHMARK_ENGINE=batch BENCH_REPS=3 \
-E2E_SIZES=100,1000,10000 Rscript benchmarks/benchmark-liljegren-three-way.R
+E2E_SIZES=100,1000,10000,100000 Rscript benchmarks/benchmark-liljegren-three-way.R
 
 BENCHMARK_ROOT=$PWD BENCHMARK_ENGINE=scalar BENCH_REPS=3 \
-E2E_SIZES=100,1000,10000 Rscript benchmarks/benchmark-liljegren-three-way.R
+E2E_SIZES=100,1000,10000,100000 Rscript benchmarks/benchmark-liljegren-three-way.R
 
 git worktree add --detach /tmp/heatstressr-pre-fork f77a263ba6820a79b7092518ff4376c787ac45b2
 BENCHMARK_ROOT=/tmp/heatstressr-pre-fork BENCHMARK_ENGINE=pre BENCH_REPS=3 \
-E2E_SIZES=100,1000,10000 Rscript benchmarks/benchmark-liljegren-three-way.R
+E2E_SIZES=100,1000,10000,100000 Rscript benchmarks/benchmark-liljegren-three-way.R
 ```
 
 ## Worker comparison
